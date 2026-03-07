@@ -1,0 +1,36 @@
+services:
+  ewihub-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ewihub-backend
+    restart: unless-stopped
+    ports:
+      - '80:3000'
+    env_file:
+      - configuration/.env.backend
+    depends_on:
+      - mongo
+    networks:
+      - app-network
+
+  mongo:
+    image: mongo:8.2.2
+    container_name: ewihub-mongo
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    env_file:
+      - configuration/.env.mongo
+    volumes:
+      - ewihub-mongo-data:/data/db
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  ewihub-mongo-data:
+    driver: local
