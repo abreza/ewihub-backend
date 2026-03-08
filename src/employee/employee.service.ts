@@ -4,9 +4,10 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, FilterQuery, Types } from 'mongoose';
+import { Model, QueryFilter, Types } from 'mongoose';
 import { plainToInstance } from 'class-transformer';
 import { Employee, EmployeeDocument } from './schemas/employee.schema';
+import { Training } from './schemas/training.schema';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { QueryEmployeesDto } from './dto/query-employees.dto';
@@ -39,7 +40,7 @@ export class EmployeeService {
   }
 
   async findAll(query: QueryEmployeesDto): Promise<PaginatedRo<EmployeeListItemRo>> {
-    const filter: FilterQuery<EmployeeDocument> = {};
+    const filter: QueryFilter<EmployeeDocument> = {};
 
     if (query.search) {
       const regex = new RegExp(query.search, 'i');
@@ -123,7 +124,7 @@ export class EmployeeService {
 
     employee.trainings.push(training);
     const saved = await employee.save();
-    const added = saved.trainings[saved.trainings.length - 1];
+    const added = saved.trainings[saved.trainings.length - 1] as any;
     return plainToInstance(TrainingRo, added.toObject?.() ?? added, { excludeExtraneousValues: true });
   }
 
@@ -134,7 +135,8 @@ export class EmployeeService {
   ): Promise<TrainingRo> {
     const employee = await this.findEmployeeOrFail(employeeId);
 
-    const training = employee.trainings.id(trainingId);
+    const trainings = employee.trainings as Types.DocumentArray<Training>;
+    const training = trainings.id(trainingId);
     if (!training) {
       throw new NotFoundException(`Training ${trainingId} not found`);
     }
@@ -145,7 +147,7 @@ export class EmployeeService {
     if (dto.courseData !== undefined) training.courseData = dto.courseData;
 
     await employee.save();
-    return plainToInstance(TrainingRo, training.toObject?.() ?? training, { excludeExtraneousValues: true });
+    return plainToInstance(TrainingRo, (training as any).toObject?.() ?? training, { excludeExtraneousValues: true });
   }
 
   async removeTraining(
@@ -154,7 +156,8 @@ export class EmployeeService {
   ): Promise<void> {
     const employee = await this.findEmployeeOrFail(employeeId);
 
-    const training = (employee.trainings).id(trainingId);
+    const trainings = employee.trainings as Types.DocumentArray<Training>;
+    const training = trainings.id(trainingId);
     if (!training) {
       throw new NotFoundException(`Training ${trainingId} not found`);
     }
@@ -235,7 +238,7 @@ export class EmployeeService {
     course: string,
     query: QueryEmployeesDto,
   ): Promise<PaginatedRo<CourseReportRowRo>> {
-    const filter: FilterQuery<EmployeeDocument> = {
+    const filter: QueryFilter<EmployeeDocument> = {
       'trainings.course': course,
     };
 
