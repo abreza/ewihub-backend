@@ -3,11 +3,7 @@ WORKDIR /app
 
 COPY package.json yarn.lock ./
 
-RUN yarn config set registry https://mirror-npm.runflare.com/ && \
-    sed -i 's|https://registry.yarnpkg.com|https://mirror-npm.runflare.com|g' yarn.lock && \
-    sed -i 's|https://registry.npmjs.org|https://mirror-npm.runflare.com|g' yarn.lock && \
-    yarn --frozen-lockfile --network-timeout 600000 --verbose 2>&1 | tee /tmp/yarn.log || \
-    (echo "=== LAST 50 LINES ===" && tail -50 /tmp/yarn.log && exit 1)
+RUN yarn install
 
 FROM node:20-alpine AS builder
 WORKDIR /app
