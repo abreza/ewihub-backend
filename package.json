@@ -37,7 +37,6 @@
     "class-validator": "^0.15.1",
     "form-data": "^4.0.5",
     "jalaali-js": "^1.2.8",
-    "minio": "^8.0.6",
     "mongoose": "^9.2.2",
     "nodemailer": "^8.0.1",
     "passport": "^0.7.0",
