@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiExtraModels, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Transform, Type } from 'class-transformer';
 import { Course } from '../constants';
 import { SelfAssessmentCourseDataRo } from './course-data/self-assessment-course-data.ro';
@@ -9,6 +9,7 @@ export type CourseDataRo =
   | OfficeErgonomicsCourseDataRo
   | null;
 
+@ApiExtraModels(SelfAssessmentCourseDataRo, OfficeErgonomicsCourseDataRo)
 export class TrainingRo {
   @Expose()
   @ApiProperty({ description: 'Training ID' })

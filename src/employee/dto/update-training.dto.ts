@@ -4,11 +4,13 @@ import {
   IsOptional,
   ValidateNested,
 } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiExtraModels, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { SelfAssessmentCourseDataDto } from './course-data/self-assessment-course-data.dto';
+import { OfficeErgonomicsCourseDataDto } from './course-data/office-ergonomics-course-data.dto';
 import { CourseDataDto } from './add-training.dto';
 
+@ApiExtraModels(SelfAssessmentCourseDataDto, OfficeErgonomicsCourseDataDto)
 export class UpdateTrainingDto {
   @ApiPropertyOptional({ description: 'Training status' })
   @IsString()
