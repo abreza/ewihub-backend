@@ -27,6 +27,8 @@ import { EmployeeDetailRo } from './dto/employee-detail.ro';
 import { EmployeeListItemRo } from './dto/employee-list-item.ro';
 import { TrainingRo } from './dto/training.ro';
 import { PaginatedRo } from './dto/paginated.ro';
+import { PaginatedEmployeesRo } from './dto/paginated-employees.ro';
+import { PaginatedCourseReportRo } from './dto/paginated-course-report.ro';
 import { ProgramStatsRo } from './dto/program-stats.ro';
 import { CourseReportRowRo } from './dto/course-report-row.ro';
 import { DiscomfortSummaryRo } from './dto/discomfort-summary.ro';
@@ -50,7 +52,7 @@ export class EmployeeController {
 
   @Get()
   @ApiOperation({ summary: 'List employees with pagination and filtering' })
-  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 200, type: PaginatedEmployeesRo })
   async findAll(
     @Query() query: QueryEmployeesDto,
   ): Promise<PaginatedRo<EmployeeListItemRo>> {
@@ -67,7 +69,7 @@ export class EmployeeController {
   @Get('reports/:course')
   @ApiOperation({ summary: 'Get report data for a specific course' })
   @ApiParam({ name: 'course', example: 'Self Assessment' })
-  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 200, type: PaginatedCourseReportRo })
   async getCourseReport(
     @Param('course') course: string,
     @Query() query: QueryEmployeesDto,
