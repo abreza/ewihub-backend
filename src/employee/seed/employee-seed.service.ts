@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { EmployeeService } from '../employee.service';
 import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class EmployeeSeedService implements OnModuleInit {
@@ -18,13 +19,7 @@ export class EmployeeSeedService implements OnModuleInit {
       return;
     }
 
-    const seedPath = process.env.SEED_DATA_PATH;
-    if (!seedPath) {
-      this.logger.warn(
-        'No SEED_DATA_PATH env variable set. Skipping employee data seeding.',
-      );
-      return;
-    }
+    const seedPath = path.join(__dirname, '..', '..', 'assets', 'employee-seed.json');
 
     try {
       this.logger.log(`Seeding employees from: ${seedPath}`);
