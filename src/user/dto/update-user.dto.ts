@@ -2,11 +2,11 @@ import {
   IsString,
   MinLength,
   IsOptional,
-  IsBoolean,
-  IsNumber,
-  Min,
+  IsEnum,
+  IsMongoId,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { UserRole } from '../schemas/user.schema';
 
 export class UpdateUserDto {
   @ApiPropertyOptional({ description: 'Username', example: 'john_doe', minLength: 3 })
@@ -21,8 +21,19 @@ export class UpdateUserDto {
   @IsOptional()
   password?: string;
 
-  @ApiPropertyOptional({ description: 'Whether the user is a super user', example: false })
-  @IsBoolean()
+  @ApiPropertyOptional({
+    description: 'User role',
+    enum: UserRole,
+  })
+  @IsEnum(UserRole)
   @IsOptional()
-  isAdmin?: boolean;
+  role?: UserRole;
+
+  @ApiPropertyOptional({
+    description: 'Organization ID',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @IsMongoId()
+  @IsOptional()
+  organization?: string;
 }

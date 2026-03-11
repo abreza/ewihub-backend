@@ -4,16 +4,14 @@ import {
   NotFoundException,
   OnModuleInit,
   BadRequestException,
-  Inject,
-  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
-import { User, UserDocument } from './schemas/user.schema';
+import { User, UserDocument, UserRole } from './schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserRo } from './dto/user.ro';
@@ -36,29 +34,17 @@ export class UserService implements OnModuleInit {
     const superUsername = this.configService.get<string>('SUPER_USER_USERNAME');
     const superPassword = this.configService.get<string>('SUPER_USER_PASSWORD');
     const superEmail = this.configService.get<string>('SUPER_USER_EMAIL');
-    const superFirstName = this.configService.get<string>(
-      'SUPER_USER_FIRST_NAME',
-    );
-    const superLastName = this.configService.get<string>(
-      'SUPER_USER_LAST_NAME',
-    );
+    const superFirstName = this.configService.get<string>('SUPER_USER_FIRST_NAME');
+    const superLastName = this.configService.get<string>('SUPER_USER_LAST_NAME');
 
-    if (
-      !superUsername ||
-      !superPassword ||
-      !superEmail ||
-      !superFirstName ||
-      !superLastName
-    ) {
+    if (!superUsername || !superPassword || !superEmail || !superFirstName || !superLastName) {
       console.log(
         'Super user credentials not found in environment variables. Required: SUPER_USER_USERNAME, SUPER_USER_PASSWORD, SUPER_USER_EMAIL, SUPER_USER_FIRST_NAME, SUPER_USER_LAST_NAME',
       );
       return;
     }
 
-    const existingUser = await this.userModel
-      .findOne({ username: superUsername })
-      .exec();
+    const existingUser = await this.userModel.findOne({ username: superUsername }).exec();
 
     if (!existingUser) {
       const hashedPassword = await bcrypt.hash(superPassword, 10);
@@ -68,14 +54,15 @@ export class UserService implements OnModuleInit {
         email: superEmail,
         firstName: superFirstName,
         lastName: superLastName,
-        isAdmin: true,
+        role: UserRole.SuperAdmin,
+        organization: null,
       });
       await superUser.save();
       console.log(`Super user "${superUsername}" created successfully`);
-    } else if (!existingUser.isAdmin) {
-      existingUser.isAdmin = true;
+    } else if (existingUser.role !== UserRole.SuperAdmin) {
+      existingUser.role = UserRole.SuperAdmin;
       await existingUser.save();
-      console.log(`User "${superUsername}" updated to super user`);
+      console.log(`User "${superUsername}" updated to super admin`);
     }
   }
 
@@ -88,10 +75,21 @@ export class UserService implements OnModuleInit {
       throw new ConflictException('نام کاربری قبلاً وجود دارد');
     }
 
+    const existingEmail = await this.userModel
+      .findOne({ email: createUserDto.email })
+      .exec();
+
+    if (existingEmail) {
+      throw new ConflictException('ایمیل قبلاً وجود دارد');
+    }
+
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
     const user = new this.userModel({
       ...createUserDto,
       password: hashedPassword,
+      organization: createUserDto.organization
+        ? new Types.ObjectId(createUserDto.organization)
+        : null,
     });
 
     const savedUser = await user.save();
@@ -105,9 +103,7 @@ export class UserService implements OnModuleInit {
     return plainToInstance(
       UserRo,
       users.map((u) => u.toObject()),
-      {
-        excludeExtraneousValues: true,
-      },
+      { excludeExtraneousValues: true },
     );
   }
 
@@ -127,6 +123,17 @@ export class UserService implements OnModuleInit {
 
   async findByEmail(email: string): Promise<UserDocument | null> {
     return this.userModel.findOne({ email }).exec();
+  }
+
+  async findByOrganization(organizationId: string): Promise<UserRo[]> {
+    const users = await this.userModel
+      .find({ organization: new Types.ObjectId(organizationId) })
+      .exec();
+    return plainToInstance(
+      UserRo,
+      users.map((u) => u.toObject()),
+      { excludeExtraneousValues: true },
+    );
   }
 
   async signup(signupDto: SignupDto): Promise<SignupRo> {
@@ -154,6 +161,8 @@ export class UserService implements OnModuleInit {
       email: signupDto.email,
       username: signupDto.username,
       password: hashedPassword,
+      role: UserRole.OrgUser,
+      organization: null,
     });
 
     const savedUser = await user.save();
@@ -181,6 +190,11 @@ export class UserService implements OnModuleInit {
       updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
     }
 
+    if (updateUserDto.organization) {
+      (user as any).organization = new Types.ObjectId(updateUserDto.organization);
+      delete updateUserDto.organization;
+    }
+
     Object.assign(user, updateUserDto);
     const savedUser = await user.save();
     return plainToInstance(UserRo, savedUser.toObject(), {
@@ -194,9 +208,9 @@ export class UserService implements OnModuleInit {
       throw new NotFoundException(`کاربر با شناسه ${id} یافت نشد`);
     }
 
-    if (user.isAdmin) {
+    if (user.role === UserRole.SuperAdmin) {
       const adminCount = await this.userModel
-        .countDocuments({ isAdmin: true })
+        .countDocuments({ role: UserRole.SuperAdmin })
         .exec();
       if (adminCount <= 1) {
         throw new BadRequestException('امکان حذف آخرین کاربر ادمین وجود ندارد');
@@ -217,10 +231,7 @@ export class UserService implements OnModuleInit {
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
-    const hashedToken = crypto
-      .createHash('sha256')
-      .update(resetToken)
-      .digest('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
 
     user.resetPasswordToken = hashedToken;
     user.resetPasswordExpires = new Date(Date.now() + 3600000);
@@ -247,5 +258,39 @@ export class UserService implements OnModuleInit {
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
     await user.save();
+  }
+
+  async createOrgUser(
+    organizationId: string,
+    dto: { firstName: string; lastName: string; email: string; username: string; password: string },
+  ): Promise<UserRo> {
+    const existingEmail = await this.userModel.findOne({ email: dto.email }).exec();
+    if (existingEmail) {
+      throw new ConflictException('A user with this email already exists');
+    }
+
+    const existingUsername = await this.userModel.findOne({ username: dto.username }).exec();
+    if (existingUsername) {
+      throw new ConflictException('A user with this username already exists');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const user = new this.userModel({
+      ...dto,
+      password: hashedPassword,
+      role: UserRole.OrgUser,
+      organization: new Types.ObjectId(organizationId),
+    });
+
+    const savedUser = await user.save();
+    return plainToInstance(UserRo, savedUser.toObject(), {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  async removeByOrganization(organizationId: string): Promise<void> {
+    await this.userModel
+      .deleteMany({ organization: new Types.ObjectId(organizationId) })
+      .exec();
   }
 }

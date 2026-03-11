@@ -19,7 +19,8 @@ export interface JwtPayload {
   sub: string;
   username: string;
   email: string;
-  isAdmin: boolean;
+  role: string;
+  organizationId: string | null;
 }
 
 @Injectable()
@@ -55,7 +56,8 @@ export class AuthService {
       sub: user._id.toString(),
       username: user.username,
       email: user.email,
-      isAdmin: user.isAdmin,
+      role: user.role,
+      organizationId: user.organization?.toString() ?? null,
     };
 
     return plainToInstance(

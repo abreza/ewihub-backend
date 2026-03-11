@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   ForbiddenException,
 } from '@nestjs/common';
+import { UserRole } from '../../user/schemas/user.schema';
 
 @Injectable()
 export class AdminGuard implements CanActivate {
@@ -11,7 +12,7 @@ export class AdminGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    if (!user || !user.isAdmin) {
+    if (!user || user.role !== UserRole.SuperAdmin) {
       throw new ForbiddenException('فقط کاربران ادمین به این بخش دسترسی دارند');
     }
 

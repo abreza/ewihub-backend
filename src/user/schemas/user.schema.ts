@@ -1,7 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 export type UserDocument = User & Document;
+
+export enum UserRole {
+  SuperAdmin = 'superAdmin',
+  OrgUser = 'orgUser',
+}
 
 @Schema({ timestamps: true })
 export class User {
@@ -20,8 +25,11 @@ export class User {
   @Prop({ required: true })
   password: string;
 
-  @Prop({ default: false })
-  isAdmin: boolean;
+  @Prop({ type: String, enum: Object.values(UserRole), default: UserRole.OrgUser })
+  role: UserRole;
+
+  @Prop({ type: Types.ObjectId, ref: 'Organization', default: null })
+  organization: Types.ObjectId | null;
 
   @Prop()
   resetPasswordToken?: string;
@@ -34,3 +42,5 @@ export class User {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+UserSchema.index({ organization: 1 });

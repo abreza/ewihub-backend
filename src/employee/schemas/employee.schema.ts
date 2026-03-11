@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 import { Training, TrainingSchema } from './training.schema';
 
 export type EmployeeDocument = Employee & Document;
@@ -15,6 +15,12 @@ export class Employee {
   @Prop({ type: String, default: null })
   oldProfileUrl: string | null;
 
+  @Prop({ type: Types.ObjectId, ref: 'Organization', default: null })
+  organization: Types.ObjectId | null;
+
+  @Prop({ type: String, default: null })
+  department: string | null;
+
   @Prop({ type: [TrainingSchema], default: [] })
   trainings: Training[];
 
@@ -27,3 +33,5 @@ export const EmployeeSchema = SchemaFactory.createForClass(Employee);
 EmployeeSchema.index({ name: 'text', email: 'text' });
 EmployeeSchema.index({ 'trainings.course': 1 });
 EmployeeSchema.index({ 'trainings.status': 1 });
+EmployeeSchema.index({ organization: 1 });
+EmployeeSchema.index({ email: 1, organization: 1 });

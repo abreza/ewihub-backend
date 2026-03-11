@@ -21,6 +21,15 @@ export class EmployeeDetailRo {
   oldProfileUrl: string | null;
 
   @Expose()
+  @ApiPropertyOptional({ description: 'Organization ID' })
+  @Transform(({ obj }) => obj.organization?.toString() ?? obj.organization)
+  organization: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ description: 'Department name' })
+  department: string | null;
+
+  @Expose()
   @ApiProperty({ description: 'All trainings', type: [TrainingRo] })
   @Type(() => TrainingRo)
   trainings: TrainingRo[];

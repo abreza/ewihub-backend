@@ -4,7 +4,8 @@ export interface CurrentUserType {
   id: string;
   username: string;
   email: string;
-  isAdmin: boolean;
+  role: string;
+  organizationId: string | null;
 }
 
 export const CurrentUser = createParamDecorator(
