@@ -89,7 +89,12 @@ export class OrganizationSeedService {
             const firstName = nameParts[0] || seedUser.name;
             const lastName = nameParts.slice(1).join(' ') || 'User';
 
-            const username = seedUser.email.split('@')[0];
+            let username = seedUser.email.split('@')[0];
+            const existingUser = await this.userService.findByUsername(username).catch(() => null);
+            if (existingUser) {
+              username = `${username}_${Math.floor(1000 + Math.random() * 9000)}`;
+            }
+
             const defaultPassword =
               seedUser.password ||
               `${entry.abbreviation.toLowerCase()}@seed2026`;
