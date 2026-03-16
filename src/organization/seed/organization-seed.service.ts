@@ -109,9 +109,33 @@ export class OrganizationSeedService {
 
             userCount++;
           } catch (err) {
-            const msg = `Failed to create user ${seedUser.email} for org ${entry.abbreviation}: ${err.message}`;
-            this.logger.warn(msg);
-            errors.push(msg);
+            if (err.status === 409 || /already exists/i.test(err.message)) {
+              try {
+                const existing = await this.userService.findByEmail(seedUser.email);
+                if (existing) {
+                  await this.userService.assignToOrganization(
+                    (existing._id as any).toString(),
+                    orgId,
+                  );
+                  userCount++;
+                  this.logger.log(
+                    `Assigned existing user ${seedUser.email} to org ${entry.abbreviation}`,
+                  );
+                } else {
+                  errors.push(
+                    `User ${seedUser.email} conflict but not found — skipped`,
+                  );
+                }
+              } catch (assignErr) {
+                const msg = `Failed to assign existing user ${seedUser.email} to org ${entry.abbreviation}: ${assignErr.message}`;
+                this.logger.warn(msg);
+                errors.push(msg);
+              }
+            } else {
+              const msg = `Failed to create user ${seedUser.email} for org ${entry.abbreviation}: ${err.message}`;
+              this.logger.warn(msg);
+              errors.push(msg);
+            }
           }
         }
       } catch (err) {

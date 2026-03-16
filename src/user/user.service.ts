@@ -125,6 +125,18 @@ export class UserService implements OnModuleInit {
     return this.userModel.findOne({ email }).exec();
   }
 
+  async assignToOrganization(userId: string, orgId: string): Promise<UserRo> {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) {
+      throw new NotFoundException(`User ${userId} not found`);
+    }
+    user.organization = new Types.ObjectId(orgId) as any;
+    const saved = await user.save();
+    return plainToInstance(UserRo, saved.toObject(), {
+      excludeExtraneousValues: true,
+    });
+  }
+
   async findByOrganization(organizationId: string): Promise<UserRo[]> {
     const users = await this.userModel
       .find({ organization: new Types.ObjectId(organizationId) })
