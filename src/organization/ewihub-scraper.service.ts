@@ -4,188 +4,155 @@ import {
   BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import * as cheerio from 'cheerio';
+import * as crypto from 'crypto';
 import { Employee, EmployeeDocument } from '../employee/schemas/employee.schema';
+import {
+  Organization,
+  OrganizationDocument,
+} from './schemas/organization.schema';
+import { CONCURRENCY, DELAY_MS } from './ewihub-scraper/constants';
+import { HttpSession } from './ewihub-scraper/http-session';
+import { EwihubScraperParser } from './ewihub-scraper/parser';
+import {
+  OrgEditPageData,
+  ScrapedEmployee,
+  SyncResult,
+} from './ewihub-scraper/types';
 
-const MAX_RETRIES = 3;
-const DELAY_MS = 500;
-const CONCURRENCY = 10;
-
-const ATTR_ALIASES: Record<string, string> = {
-  started: 'startedOn',
-  'started on': 'startedOn',
-  completed: 'completedOn',
-  'completed on': 'completedOn',
-  age: 'age',
-  height: 'height',
-  'dominant hand': 'dominantHand',
-  dominanthand: 'dominantHand',
-  handedness: 'dominantHand',
-  bifocals: 'bifocals',
-  'visual issue': 'visualIssue',
-  visualissue: 'visualIssue',
-  'computer time': 'computerTime',
-  computertime: 'computerTime',
-  'dual monitor': 'dualMonitor',
-  dualmonitor: 'dualMonitor',
-  'dual monitors': 'dualMonitor',
-  laptop: 'laptop',
-  'sit to stand': 'sitToStand',
-  sittostand: 'sitToStand',
-  'sit to stand desk': 'sitToStand',
-  demographic: 'demographic',
-  demographics: 'demographic',
-  discomfort: 'discomfort',
-  discomforts: 'discomfortAreas',
-  'discomfort areas': 'discomfortAreas',
-  discomfortareas: 'discomfortAreas',
-  'adjustment result': 'adjustmentResult',
-  adjustmentresult: 'adjustmentResult',
-  action: 'actionNeeded',
-  actions: 'actionNeeded',
-  'action needed': 'actionNeeded',
-  actionneeded: 'actionNeeded',
-  equipment: 'equipmentNeeded',
-  'equipment needed': 'equipmentNeeded',
-  equipmentneeded: 'equipmentNeeded',
-  result: 'result',
-  issues: 'adjustmentResult',
-};
-
-const BODY_PART_ALIASES: Record<string, string> = {
-  'upper-back': 'upperBack',
-  'mid-back': 'midBack',
-  'lower-back': 'lowerBack',
-  buttocks: 'buttocks',
-  head: 'head',
-  neck: 'neck',
-  eyes: 'eyes',
-  'left-shoulder': 'leftShoulder',
-  'right-shoulder': 'rightShoulder',
-  'left-upper-arm': 'leftUpperArm',
-  'right-upper-arm': 'rightUpperArm',
-  'left-elbow': 'leftElbow',
-  'right-elbow': 'rightElbow',
-  'left-lower-arm': 'leftLowerArm',
-  'right-lower-arm': 'rightLowerArm',
-  'left-wrist': 'leftWrist',
-  'right-wrist': 'rightWrist',
-  'left-hand': 'leftHand',
-  'right-hand': 'rightHand',
-  'left-thigh': 'leftThigh',
-  'right-thigh': 'rightThigh',
-  'left-knee': 'leftKnee',
-  'right-knee': 'rightKnee',
-  'left-lower-leg': 'leftLowerLeg',
-  'right-lower-leg': 'rightLowerLeg',
-  'left-foot-or-ankle': 'leftFootOrAnkle',
-  'right-foot-or-ankle': 'rightFootOrAnkle',
-};
-
-class HttpSession {
-  private cookies: Record<string, string> = {};
-
-  private storeCookies(res: Response): void {
-    const raw: string[] =
-      (res.headers as any).getSetCookie?.() ??
-      (res.headers as any).raw?.()['set-cookie'] ??
-      [];
-    for (const c of raw) {
-      const [pair] = c.split(';');
-      const [name, ...rest] = pair.split('=');
-      this.cookies[name.trim()] = rest.join('=').trim();
-    }
-  }
-
-  private cookieHeader(): string {
-    return Object.entries(this.cookies)
-      .map(([k, v]) => `${k}=${v}`)
-      .join('; ');
-  }
-
-  async fetch(url: string, opts: RequestInit & { headers?: Record<string, string> } = {}): Promise<Response> {
-    const headers: Record<string, string> = {
-      'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      Connection: 'keep-alive',
-      Cookie: this.cookieHeader(),
-      ...(opts.headers as Record<string, string>),
-    };
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const res = await fetch(url, {
-          ...opts,
-          headers,
-          redirect: 'manual',
-        });
-
-        this.storeCookies(res);
-
-        if ([301, 302, 303, 307, 308].includes(res.status)) {
-          const location = res.headers.get('location');
-          if (location) {
-            const next = new URL(location, url).href;
-            return this.fetch(next);
-          }
-        }
-
-        return res;
-      } catch (err) {
-        if (attempt < MAX_RETRIES) {
-          const wait = attempt * 2000;
-          await new Promise((r) => setTimeout(r, wait));
-        } else {
-          throw err;
-        }
-      }
-    }
-
-    throw new Error(`Failed to fetch ${url} after ${MAX_RETRIES} retries`);
-  }
-}
-
-
-interface ScrapedTraining {
-  course: string;
-  status: string;
-  attributes: Record<string, string>;
-  bodyDiagram?: Record<string, number> | null;
-}
-
-interface ScrapedEmployee {
-  name: string;
-  email: string;
-  profileUrl: string;
-  trainings: ScrapedTraining[];
-  bodyDiagram: Record<string, number> | null;
-}
-
-export interface SyncResult {
-  success: boolean;
-  message: string;
-  totalScraped: number;
-  created: number;
-  updated: number;
-  errors: string[];
-}
-
+export type { SyncResult } from './ewihub-scraper/types';
 
 @Injectable()
 export class EwihubScraperService {
   private readonly logger = new Logger(EwihubScraperService.name);
+  private readonly parser = new EwihubScraperParser();
 
   constructor(
+    private readonly configService: ConfigService,
     @InjectModel(Employee.name)
     private readonly employeeModel: Model<EmployeeDocument>,
+    @InjectModel(Organization.name)
+    private readonly orgModel: Model<OrganizationDocument>,
   ) { }
 
 
-  async scrapeAndSync(
+  async scrapeAndSync(orgId: string): Promise<SyncResult> {
+    const adminEmail = this.configService.get<string>('EWIHUB_ADMIN_EMAIL');
+    const adminPassword = this.configService.get<string>('EWIHUB_ADMIN_PASSWORD');
+    if (!adminEmail || !adminPassword) {
+      throw new BadRequestException(
+        'EWIHUB_ADMIN_EMAIL and EWIHUB_ADMIN_PASSWORD must be set in environment',
+      );
+    }
+
+    const org = await this.orgModel.findById(orgId).exec();
+    if (!org) {
+      throw new BadRequestException(`Organization ${orgId} not found`);
+    }
+    const orgAbbreviation = org.abbreviation.toLowerCase();
+
+    const adminSession = new HttpSession();
+    this.logger.log(`Logging in to ewihub.com as admin (${adminEmail})...`);
+    await this.login(adminSession, adminEmail, adminPassword);
+    this.logger.log('Admin login successful');
+
+    const editUrl = `https://ewihub.com/organizations/${orgAbbreviation}/edit`;
+    this.logger.log(`Fetching org edit page: ${editUrl}`);
+    const editRes = await adminSession.fetch(editUrl);
+    const editHtml = await editRes.text();
+    const pageData = this.parser.parseOrgEditPage(editHtml);
+
+    const tempEmail = `_sync_${crypto.randomBytes(4).toString('hex')}@ewihub-temp.io`;
+    const tempPassword = crypto.randomBytes(16).toString('base64url');
+    const tempName = '_SyncBot';
+
+    this.logger.log(`Creating temp user: ${tempEmail}`);
+    await this.submitOrgForm(adminSession, orgAbbreviation, pageData, {
+      action: 'add',
+      name: tempName,
+      email: tempEmail,
+      password: tempPassword,
+    });
+
+    const editRes2 = await adminSession.fetch(editUrl);
+    const editHtml2 = await editRes2.text();
+    const pageData2 = this.parser.parseOrgEditPage(editHtml2);
+    const tempUserRow = pageData2.users.find((u) => u.email === tempEmail);
+
+    try {
+      const scraperSession = new HttpSession();
+      this.logger.log(`Logging in as temp user: ${tempEmail}`);
+      await this.login(scraperSession, tempEmail, tempPassword);
+      this.logger.log('Temp user login successful');
+
+      this.logger.log('Fetching employee directory...');
+      const links = await this.fetchEmployeeLinks(scraperSession);
+      this.logger.log(`Found ${links.length} employee link(s)`);
+
+      if (links.length === 0) {
+        return {
+          success: true,
+          message: 'No employees found on ewihub.com for this account',
+          totalScraped: 0,
+          created: 0,
+          updated: 0,
+          errors: [],
+        };
+      }
+
+      this.logger.log(
+        `Scraping ${links.length} profiles (concurrency=${CONCURRENCY})...`,
+      );
+      const scraped = await this.scrapeProfiles(scraperSession, links);
+      this.logger.log(`Scraped ${scraped.length} employee profiles`);
+
+      const result = await this.upsertEmployees(orgId, scraped);
+      this.logger.log(
+        `Sync complete: created=${result.created} updated=${result.updated} errors=${result.errors.length}`,
+      );
+
+      return result;
+    } finally {
+      this.logger.log(`Cleaning up temp user: ${tempEmail}`);
+      try {
+        const editRes3 = await adminSession.fetch(editUrl);
+        const editHtml3 = await editRes3.text();
+        const pageData3 = this.parser.parseOrgEditPage(editHtml3);
+        const userToDelete = pageData3.users.find(
+          (u) => u.email === tempEmail,
+        );
+
+        if (userToDelete) {
+          await this.submitOrgForm(
+            adminSession,
+            orgAbbreviation,
+            pageData3,
+            {
+              action: 'delete',
+              id: userToDelete.id,
+              name: userToDelete.name,
+              email: userToDelete.email,
+              password: '****',
+            },
+          );
+          this.logger.log('Temp user deleted');
+        } else {
+          this.logger.warn(
+            'Temp user not found in edit page — may have already been removed',
+          );
+        }
+      } catch (cleanupErr) {
+        this.logger.error(
+          `Failed to delete temp user ${tempEmail}: ${(cleanupErr as Error).message}`,
+        );
+      }
+    }
+  }
+
+
+  async scrapeAndSyncWithCredentials(
     orgId: string,
     email: string,
     password: string,
@@ -211,7 +178,9 @@ export class EwihubScraperService {
       };
     }
 
-    this.logger.log(`Scraping ${links.length} profiles (concurrency=${CONCURRENCY})...`);
+    this.logger.log(
+      `Scraping ${links.length} profiles (concurrency=${CONCURRENCY})...`,
+    );
     const scraped = await this.scrapeProfiles(session, links);
     this.logger.log(`Scraped ${scraped.length} employee profiles`);
 
@@ -223,14 +192,106 @@ export class EwihubScraperService {
     return result;
   }
 
+  private async submitOrgForm(
+    session: HttpSession,
+    orgAbbreviation: string,
+    pageData: OrgEditPageData,
+    userOp:
+      | { action: 'add'; name: string; email: string; password: string }
+      | { action: 'delete'; id: string; name: string; email: string; password: string },
+  ): Promise<void> {
+    const boundary = `----WebKitFormBoundary${crypto.randomBytes(8).toString('hex')}`;
 
-  private async login(session: HttpSession, email: string, password: string): Promise<void> {
+    const parts: string[] = [];
+
+    const addField = (name: string, value: string) => {
+      parts.push(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}`,
+      );
+    };
+
+    addField('_token', pageData.csrfToken);
+    addField('_method', 'PUT');
+
+    parts.push(
+      `--${boundary}\r\nContent-Disposition: form-data; name="logo"; filename=""\r\nContent-Type: application/octet-stream\r\n\r\n`,
+    );
+
+    addField('name', pageData.name);
+    addField('abbreviation', pageData.abbreviation);
+    addField('notes', pageData.notes);
+
+    if (pageData.active) {
+      addField('active', 'active');
+    }
+
+    if (pageData.departmentsEnabled) {
+      addField('departments_enabled', 'departments_enabled');
+    }
+
+    for (const [courseName, courseValue] of Object.entries(pageData.courses)) {
+      addField(courseName, courseValue);
+    }
+
+    addField('submit', '');
+
+    for (const user of pageData.users) {
+      if (userOp.action === 'delete' && user.id === userOp.id) {
+        addField(
+          'users[]',
+          `deleted|||${user.id}|||${user.name}|||${user.email}|||${user.password}|||`,
+        );
+      } else {
+        addField(
+          'users[]',
+          `${user.status}|||${user.id}|||${user.name}|||${user.email}|||${user.password}|||`,
+        );
+      }
+    }
+
+    if (userOp.action === 'add') {
+      addField(
+        'users[]',
+        `created||||||${userOp.name}|||${userOp.email}|||${userOp.password}|||`,
+      );
+    }
+
+    const body = parts.join('\r\n') + `\r\n--${boundary}--\r\n`;
+
+    const res = await session.fetch(
+      `https://ewihub.com/organizations/${orgAbbreviation}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        },
+        body,
+      },
+    );
+
+    const resText = await res.text();
+
+    if (resText.includes('These credentials do not match') || res.status >= 400) {
+      throw new BadRequestException(
+        `Org form submission failed (status ${res.status})`,
+      );
+    }
+  }
+
+
+  private async login(
+    session: HttpSession,
+    email: string,
+    password: string,
+  ): Promise<void> {
     const loginPageRes = await session.fetch('https://ewihub.com/login');
     const loginPageHtml = await loginPageRes.text();
-    const token = this.extractCsrfToken(loginPageHtml);
+    const token = this.parser.extractCsrfToken(loginPageHtml);
 
     if (!token) {
-      throw new BadRequestException('Could not retrieve CSRF token from ewihub.com login page');
+      throw new BadRequestException(
+        'Could not retrieve CSRF token from ewihub.com login page',
+      );
     }
 
     const loginRes = await session.fetch('https://ewihub.com/login', {
@@ -246,25 +307,25 @@ export class EwihubScraperService {
 
     const postLoginHtml = await loginRes.text();
     if (postLoginHtml.includes('These credentials do not match')) {
-      throw new UnauthorizedException('EWI Hub login failed — invalid credentials');
+      throw new UnauthorizedException(
+        'EWI Hub login failed — invalid credentials',
+      );
     }
   }
-
 
   private async fetchEmployeeLinks(session: HttpSession): Promise<string[]> {
     const res = await session.fetch('https://ewihub.com/employees?length=-1');
     let html = await res.text();
-    let links = this.parseEmployeeLinks(html);
+    let links = this.parser.parseEmployeeLinks(html);
 
     if (links.length === 0) {
       const res2 = await session.fetch('https://ewihub.com/employees');
       html = await res2.text();
-      links = this.parseEmployeeLinks(html);
+      links = this.parser.parseEmployeeLinks(html);
     }
 
     return links;
   }
-
 
   private async scrapeProfiles(
     session: HttpSession,
@@ -279,22 +340,25 @@ export class EwihubScraperService {
         try {
           const res = await session.fetch(links[i]);
           const html = await res.text();
-          results[i] = this.parseEmployeeProfile(html, links[i]);
+          results[i] = this.parser.parseEmployeeProfile(html, links[i]);
           await new Promise((r) => setTimeout(r, DELAY_MS));
         } catch (err) {
-          this.logger.warn(`Failed to scrape ${links[i]}: ${(err as Error).message}`);
+          this.logger.warn(
+            `Failed to scrape ${links[i]}: ${(err as Error).message}`,
+          );
           results[i] = null as any;
         }
       }
     };
 
     await Promise.all(
-      Array.from({ length: Math.min(CONCURRENCY, links.length) }, () => worker()),
+      Array.from({ length: Math.min(CONCURRENCY, links.length) }, () =>
+        worker(),
+      ),
     );
 
     return results.filter(Boolean);
   }
-
 
   private async upsertEmployees(
     orgId: string,
@@ -307,7 +371,10 @@ export class EwihubScraperService {
     for (const scraped of employees) {
       try {
         let employee = await this.employeeModel
-          .findOne({ email: scraped.email, organization: new Types.ObjectId(orgId) })
+          .findOne({
+            email: scraped.email,
+            organization: new Types.ObjectId(orgId),
+          })
           .exec();
 
         if (!employee) {
@@ -348,10 +415,15 @@ export class EwihubScraperService {
     };
   }
 
-  private mergeTrainings(employee: EmployeeDocument, scraped: ScrapedEmployee): void {
+  private mergeTrainings(
+    employee: EmployeeDocument,
+    scraped: ScrapedEmployee,
+  ): void {
     for (const st of scraped.trainings) {
-      const parsed = this.transformScrapedTraining(st);
-      const existing = employee.trainings.find((t) => t.course === parsed.course);
+      const parsed = this.parser.transformScrapedTraining(st);
+      const existing = employee.trainings.find(
+        (t) => t.course === parsed.course,
+      );
 
       if (existing) {
         existing.status = parsed.status;
@@ -362,380 +434,5 @@ export class EwihubScraperService {
         employee.trainings.push(parsed as any);
       }
     }
-  }
-
-
-  private extractCsrfToken(html: string): string | undefined {
-    const $ = cheerio.load(html);
-    return $('input[name="_token"]').val() as string | undefined;
-  }
-
-  private parseEmployeeLinks(html: string): string[] {
-    const $ = cheerio.load(html);
-    const links: string[] = [];
-    $('#tblReport tbody tr a.employee-link').each((_, el) => {
-      const href = $(el).attr('href');
-      if (href) {
-        links.push(href.startsWith('http') ? href : `https://ewihub.com${href}`);
-      }
-    });
-    return links;
-  }
-
-  private parseEmployeeProfile(html: string, profileUrl: string): ScrapedEmployee {
-    const $ = cheerio.load(html);
-
-    const name = $('.widget-user-username').text().trim() || 'Unknown';
-    const email = $('.widget-user-desc').text().trim() || 'Unknown';
-    const trainings: ScrapedTraining[] = [];
-    const bodyDiagram = this.parseBodyDiagram($);
-
-    $('.timeline-item').each((_, item) => {
-      const courseName = $(item).find('.timeline-header a').text().trim();
-      if (!courseName) return;
-
-      const status = $(item).find('.ribbon').text().trim() || 'Unknown';
-      const attributes: Record<string, string> = {};
-
-      $(item)
-        .find('.timeline-body table tr')
-        .each((__, row) => {
-          const rawKey = $(row).find('th').text().trim().replace(/:$/, '');
-          let val = $(row)
-            .find('td')
-            .html()
-            ?.replace(/<br\s*\/?>/gi, ', ')
-            .replace(/<\/?[^>]+(>|$)/g, '')
-            .replace(/\s\s+/g, ' ')
-            .trim();
-          if (val?.endsWith(',')) val = val.slice(0, -1);
-
-          if (rawKey && val) {
-            const key = this.normaliseAttrKey(rawKey);
-            attributes[key] = val;
-          }
-        });
-
-      const entry: ScrapedTraining = { course: courseName, status, attributes };
-      if (/self.?assessment/i.test(courseName) && bodyDiagram) {
-        entry.bodyDiagram = bodyDiagram;
-      }
-      trainings.push(entry);
-    });
-
-    return { name, email, trainings, bodyDiagram, profileUrl };
-  }
-
-  private parseBodyDiagram($: cheerio.CheerioAPI): Record<string, number> | null {
-    const diagram: Record<string, number> = {};
-    let found = false;
-
-    $('.body-part-text').each((_, el) => {
-      const classes = $(el).attr('class') || '';
-      const match = classes.match(/([\w-]+)-text\s+body-part-text/);
-      if (!match) return;
-
-      const rawPart = match[1];
-      const camel = BODY_PART_ALIASES[rawPart] || rawPart;
-      const severity = parseInt($(el).text().trim(), 10);
-
-      if (!isNaN(severity)) {
-        diagram[camel] = severity;
-        found = true;
-      }
-    });
-
-    if (!found) {
-      $('.body-part').each((_, el) => {
-        const tag = ((el as any).tagName || (el as any).name || '').toLowerCase();
-        if (tag !== 'path') return;
-
-        const classes = $(el).attr('class') || '';
-        const match = classes.match(/([\w-]+)\s+body-part\s+spectrum-(\d+)/);
-        if (!match) return;
-
-        const rawPart = match[1];
-        if (rawPart === 'left-eye' || rawPart === 'right-eye') return;
-
-        const camel = BODY_PART_ALIASES[rawPart] || rawPart;
-        const severity = parseInt(match[2], 10);
-
-        if (!isNaN(severity)) {
-          diagram[camel] = severity;
-          found = true;
-        }
-      });
-
-      if (!diagram.eyes) {
-        $('path.eyes').each((_, el) => {
-          const classes = $(el).attr('class') || '';
-          const m = classes.match(/spectrum-(\d+)/);
-          if (m && !diagram.eyes) {
-            diagram.eyes = parseInt(m[1], 10);
-            found = true;
-          }
-        });
-      }
-    }
-
-    return found ? diagram : null;
-  }
-
-
-  private transformScrapedTraining(st: ScrapedTraining): {
-    course: string;
-    status: string;
-    startedDate: string | null;
-    completedDate: string | null;
-    courseData: Record<string, any> | null;
-  } {
-    const a = st.attributes;
-    const status = this.mapStatus(st.status);
-
-    const result: any = {
-      course: st.course,
-      status,
-      startedDate: this.attr(a, 'startedOn') || null,
-      completedDate: this.attr(a, 'completedOn') || null,
-      courseData: null,
-    };
-
-    if (st.course === 'Self Assessment' && status !== 'pending') {
-      result.courseData = this.buildSelfAssessmentData(a, st.bodyDiagram);
-    }
-
-    return result;
-  }
-
-  private buildSelfAssessmentData(
-    a: Record<string, string>,
-    bodyDiagramRaw: Record<string, number> | null | undefined,
-  ): Record<string, any> {
-    const demographic = this.parseDemographic(a);
-    const discomforts = this.parseDiscomforts(a);
-    const actions = this.parseActions(a);
-    const equipment = this.parseEquipment(a);
-    const issues = this.parseIssues(a);
-    const result = this.attr(a, 'result') || null;
-
-    let bodyPartsDiscomfort: { bodyPart: string; severity: number }[] = [];
-    if (bodyDiagramRaw) {
-      bodyPartsDiscomfort = Object.entries(bodyDiagramRaw)
-        .filter(([, sev]) => sev > 0)
-        .map(([bodyPart, severity]) => ({ bodyPart, severity }));
-    }
-
-    return {
-      demographic: demographic && Object.keys(demographic).length > 0 ? demographic : null,
-      discomforts,
-      actions,
-      equipment,
-      issues,
-      result,
-      bodyPartsDiscomfort,
-    };
-  }
-
-  private parseDemographic(a: Record<string, string>): Record<string, any> | null {
-    const demo: Record<string, any> = {};
-
-    const age = this.attr(a, 'age');
-    if (age) demo.age = age;
-
-    const heightRaw = this.attr(a, 'height');
-    if (heightRaw) {
-      demo.heightRaw = heightRaw;
-      demo.heightInches = this.parseHeight(heightRaw);
-    }
-
-    const hand = this.attr(a, 'dominantHand');
-    if (hand) demo.handedness = /left/i.test(hand) ? 'left' : 'right';
-
-    const bifocals = this.attr(a, 'bifocals');
-    if (bifocals != null) demo.wearsBifocals = this.toBool(bifocals);
-
-    const visualIssue = this.attr(a, 'visualIssue');
-    if (visualIssue != null) demo.visualIssue = visualIssue;
-
-    const computerTime = this.attr(a, 'computerTime');
-    if (computerTime != null) demo.computerTime = computerTime;
-
-    const dualMon = this.attr(a, 'dualMonitor');
-    if (dualMon != null) demo.dualMonitors = this.toBool(dualMon);
-
-    const laptop = this.attr(a, 'laptop');
-    if (laptop != null) demo.usesLaptop = this.toBool(laptop);
-
-    const sitToStand = this.attr(a, 'sitToStand');
-    if (sitToStand != null) demo.sitToStand = sitToStand;
-
-    const compositeRaw = this.attr(a, 'demographic');
-    if (compositeRaw) {
-      const parsed = this.parseDemographicString(compositeRaw);
-      for (const [k, v] of Object.entries(parsed)) {
-        if (demo[k] === undefined) demo[k] = v;
-      }
-    }
-
-    if (demo.dualMonitors === undefined) demo.dualMonitors = false;
-    if (demo.usesLaptop === undefined) demo.usesLaptop = false;
-    if (demo.wearsBifocals === undefined) demo.wearsBifocals = false;
-
-    return Object.keys(demo).length > 3 ? demo : null;
-  }
-
-  private parseDemographicString(raw: string): Record<string, any> {
-    if (!raw || raw === '-') return {};
-    const demo: Record<string, any> = {};
-    const parts = raw.split(/\s*,\s*/).map((s) => s.trim()).filter(Boolean);
-
-    for (const part of parts) {
-      const ageMatch = part.match(/^Age:\s*(.+)/i);
-      if (ageMatch) { demo.age = ageMatch[1].trim(); continue; }
-
-      const heightMatch = part.match(/^Height:\s*(.+)/i);
-      if (heightMatch) {
-        demo.heightRaw = heightMatch[1].trim();
-        demo.heightInches = this.parseHeight(heightMatch[1].trim());
-        continue;
-      }
-
-      if (/left.?handed/i.test(part)) { demo.handedness = 'left'; continue; }
-      if (/right.?handed/i.test(part)) { demo.handedness = 'right'; continue; }
-      if (/has dual monitors/i.test(part)) { demo.dualMonitors = true; continue; }
-      if (/uses laptop/i.test(part)) { demo.usesLaptop = true; continue; }
-      if (/wears bifocals/i.test(part)) { demo.wearsBifocals = true; continue; }
-      if (/chair height is adjustable/i.test(part)) { demo.chairAdjustable = true; continue; }
-      if (/chair height is not adjustable/i.test(part)) { demo.chairAdjustable = false; continue; }
-
-      const sitStandMatch = part.match(/sit to stand desk:\s*(.+)/i);
-      if (sitStandMatch) { demo.sitToStand = sitStandMatch[1].trim(); continue; }
-
-      const compTimeMatch = part.match(/computer time:\s*(.+)/i);
-      if (compTimeMatch) { demo.computerTime = compTimeMatch[1].trim(); continue; }
-    }
-
-    return demo;
-  }
-
-  private parseDiscomforts(a: Record<string, string>): { area: string; severity: number | null }[] {
-    const areas: { area: string; severity: number | null }[] = [];
-    const seen = new Set<string>();
-
-    const areasRaw = this.attr(a, 'discomfortAreas');
-    if (areasRaw) {
-      for (const entry of this.splitList(areasRaw)) {
-        const m = entry.match(/^(.+?):\s*(\d+)$/);
-        const area = m ? m[1].trim() : entry;
-        const severity = m ? parseInt(m[2], 10) : null;
-        if (!seen.has(area.toLowerCase())) {
-          seen.add(area.toLowerCase());
-          areas.push({ area, severity });
-        }
-      }
-    }
-
-    const discomfortRaw = this.attr(a, 'discomfort');
-    if (discomfortRaw && !seen.has(discomfortRaw.toLowerCase())) {
-      areas.push({ area: discomfortRaw, severity: null });
-    }
-
-    return areas;
-  }
-
-  private parseEquipment(a: Record<string, string>): string[] {
-    return this.splitList(this.attr(a, 'equipmentNeeded') || '');
-  }
-
-  private parseActions(a: Record<string, string>): string[] {
-    return this.splitList(this.attr(a, 'actionNeeded') || '');
-  }
-
-  private parseIssues(a: Record<string, string>): Record<string, any> {
-    const adjustmentResult = this.attr(a, 'adjustmentResult');
-    const result = this.attr(a, 'result');
-
-    const parsed: Record<string, any> = {
-      recommendations: [],
-      actionItems: [],
-      suggestions: [],
-      result: result || null,
-      raw: adjustmentResult || null,
-      other: [],
-    };
-
-    const raw = adjustmentResult || '';
-    if (!raw || raw === '-' || /^no issues$/i.test(raw.trim())) return parsed;
-
-    const equipMatch = raw.match(
-      /Recommend Equipment:\s*([^A-Z]*?)(?=Action Items:|Suggestions:|$)/i,
-    );
-    if (equipMatch) parsed.recommendations = this.splitList(equipMatch[1]);
-
-    const actionMatch = raw.match(
-      /Action Items:\s*(.+?)(?=Recommend Equipment:|Suggestions:|$)/i,
-    );
-    if (actionMatch) parsed.actionItems = this.splitList(actionMatch[1]);
-
-    const suggestMatch = raw.match(/Suggestions:\s*(.+)/i);
-    if (suggestMatch) parsed.suggestions = [suggestMatch[1].trim()];
-
-    if (
-      parsed.recommendations.length === 0 &&
-      parsed.actionItems.length === 0 &&
-      parsed.suggestions.length === 0
-    ) {
-      parsed.other = this.splitList(raw);
-    }
-
-    return parsed;
-  }
-
-
-  private normaliseAttrKey(raw: string): string {
-    const lower = raw.toLowerCase().replace(/[_\-]+/g, ' ').trim();
-    return ATTR_ALIASES[lower] || lower;
-  }
-
-  private attr(attributes: Record<string, string>, ...keys: string[]): string | null {
-    for (const k of keys) {
-      if (attributes[k] != null && attributes[k] !== '' && attributes[k] !== '-') {
-        return attributes[k];
-      }
-    }
-    return null;
-  }
-
-  private mapStatus(raw: string): string {
-    const statusMap: Record<string, string> = {
-      pass: 'pass',
-      action: 'action',
-      assessment: 'assessment',
-      completed: 'completed',
-      finished: 'finished',
-      started: 'started',
-      pending: 'pending',
-    };
-    return statusMap[raw.toLowerCase()] || raw.toLowerCase();
-  }
-
-  private toBool(val: any): boolean {
-    if (typeof val === 'boolean') return val;
-    if (typeof val === 'string') {
-      return ['true', 'yes', '1', 'on'].includes(val.trim().toLowerCase());
-    }
-    return !!val;
-  }
-
-  private parseHeight(raw: string): number | null {
-    if (!raw) return null;
-    const m = raw.match(/(\d+)'\s*-?\s*(\d+(?:\.\d+)?)/);
-    if (!m) return null;
-    return parseInt(m[1], 10) * 12 + parseFloat(m[2]);
-  }
-
-  private splitList(raw: string): string[] {
-    if (!raw || raw === '-') return [];
-    return raw.split(/\s*,\s*/).map((s) => s.trim()).filter(Boolean);
   }
 }

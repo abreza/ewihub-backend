@@ -1,17 +1,17 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import * as fs from 'fs';
-import * as path from 'path';
 import {
   Organization,
   OrganizationDocument,
 } from '../schemas/organization.schema';
 import { UserService } from '../../user/user.service';
+import { SeedResultRo } from '../dto/seed-result.ro';
 
 interface SeedUser {
   name: string;
   email: string;
+  password?: string;
 }
 
 interface SeedOrganization {
@@ -27,7 +27,7 @@ interface SeedOrganization {
 }
 
 @Injectable()
-export class OrganizationSeedService implements OnModuleInit {
+export class OrganizationSeedService {
   private readonly logger = new Logger(OrganizationSeedService.name);
 
   constructor(
@@ -36,40 +36,37 @@ export class OrganizationSeedService implements OnModuleInit {
     private readonly userService: UserService,
   ) { }
 
-  async onModuleInit() {
-    const count = await this.orgModel.countDocuments().exec();
-
-    if (count > 0) {
-      this.logger.log(
-        `Organization collection already has ${count} records — skipping seed.`,
+  async seedFromData(data: SeedOrganization[]): Promise<SeedResultRo> {
+    if (!Array.isArray(data)) {
+      throw new BadRequestException(
+        'Seed data must be a JSON array of organization objects.',
       );
-      return;
     }
 
-    const seedPath = path.join(
-      __dirname,
-      '..',
-      '..',
-      'assets',
-      'organization-seed.json',
-    );
+    let orgCount = 0;
+    let userCount = 0;
+    const errors: string[] = [];
 
-    try {
-      this.logger.log(`Seeding organizations from: ${seedPath}`);
-      const raw = fs.readFileSync(seedPath, 'utf-8');
-      const data: SeedOrganization[] = JSON.parse(raw);
+    for (const entry of data) {
+      try {
+        if (!entry.abbreviation || !entry.name) {
+          errors.push(
+            `Skipped entry: missing required fields (abbreviation, name)`,
+          );
+          continue;
+        }
 
-      if (!Array.isArray(data)) {
-        this.logger.error(
-          'Seed file must contain a JSON array of organization objects.',
-        );
-        return;
-      }
+        const existing = await this.orgModel
+          .findOne({ abbreviation: entry.abbreviation })
+          .exec();
 
-      let orgCount = 0;
-      let userCount = 0;
+        if (existing) {
+          errors.push(
+            `Skipped "${entry.abbreviation}": organization already exists`,
+          );
+          continue;
+        }
 
-      for (const entry of data) {
         const org = new this.orgModel({
           name: entry.name,
           abbreviation: entry.abbreviation,
@@ -93,7 +90,9 @@ export class OrganizationSeedService implements OnModuleInit {
             const lastName = nameParts.slice(1).join(' ') || 'User';
 
             const username = seedUser.email.split('@')[0];
-            const defaultPassword = `${entry.abbreviation.toLowerCase()}@seed2024`;
+            const defaultPassword =
+              seedUser.password ||
+              `${entry.abbreviation.toLowerCase()}@seed2026`;
 
             await this.userService.createOrgUser(orgId, {
               firstName,
@@ -105,18 +104,22 @@ export class OrganizationSeedService implements OnModuleInit {
 
             userCount++;
           } catch (err) {
-            this.logger.warn(
-              `Failed to create user ${seedUser.email} for org ${entry.abbreviation}: ${err.message}`,
-            );
+            const msg = `Failed to create user ${seedUser.email} for org ${entry.abbreviation}: ${err.message}`;
+            this.logger.warn(msg);
+            errors.push(msg);
           }
         }
+      } catch (err) {
+        const msg = `Failed to seed org "${entry.abbreviation}": ${err.message}`;
+        this.logger.warn(msg);
+        errors.push(msg);
       }
-
-      this.logger.log(
-        `Successfully seeded ${orgCount} organizations and ${userCount} users.`,
-      );
-    } catch (err) {
-      this.logger.error(`Failed to seed organizations: ${err.message}`);
     }
+
+    return {
+      organizationsCreated: orgCount,
+      usersCreated: userCount,
+      errors,
+    };
   }
 }

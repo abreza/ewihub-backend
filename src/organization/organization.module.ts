@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ConfigModule } from '@nestjs/config';
 import { Organization, OrganizationSchema } from './schemas/organization.schema';
 import { Employee, EmployeeSchema } from '../employee/schemas/employee.schema';
 import { OrganizationService } from './organization.service';
@@ -10,6 +11,7 @@ import { UserModule } from '../user/user.module';
 
 @Module({
   imports: [
+    ConfigModule,
     UserModule,
     MongooseModule.forFeature([
       { name: Organization.name, schema: OrganizationSchema },

@@ -8,6 +8,11 @@ import {
   Param,
   UseGuards,
   HttpCode,
+  FileTypeValidator,
+  MaxFileSizeValidator,
+  ParseFilePipe,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -15,6 +20,8 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiParam,
+  ApiBody,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { OrganizationService } from './organization.service';
 import { EwihubScraperService } from './ewihub-scraper.service';
@@ -31,6 +38,9 @@ import { UserRo } from '../user/dto/user.ro';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { IdDto } from '../common/dto/id.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { SeedResultRo } from './dto/seed-result.ro';
+import { OrganizationSeedService } from './seed/organization-seed.service';
 
 @ApiTags('Organizations')
 @ApiBearerAuth()
@@ -40,6 +50,7 @@ export class OrganizationController {
   constructor(
     private readonly organizationService: OrganizationService,
     private readonly ewihubScraperService: EwihubScraperService,
+    private readonly seedService: OrganizationSeedService,
   ) { }
 
   @Post()
@@ -136,15 +147,34 @@ export class OrganizationController {
     return this.organizationService.removeUser(id, userId);
   }
 
+  @Post(':id/sync-ewihub-super-admin')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Sync employee data from ewihub.com (admin-based)',
+    description:
+      'Super-admin endpoint. Logs in to ewihub.com with admin credentials ' +
+      'creates a temporary org user, scrapes every employee ' +
+      'profile, upserts the data, and removes the temp user. ' +
+      'No org-user credentials required.',
+  })
+  @ApiResponse({ status: 200, type: SyncResultRo })
+  @ApiResponse({ status: 400, description: 'Admin credentials not configured or org not found' })
+  @ApiResponse({ status: 401, description: 'EWI Hub admin credentials invalid' })
+  @ApiResponse({ status: 404, description: 'Organization not found' })
+  async syncFromEwihubSuperAdmin(
+    @Param() { id }: IdDto,
+  ): Promise<SyncResultRo> {
+    return this.ewihubScraperService.scrapeAndSync(id);
+  }
+
   @Post(':id/sync-ewihub')
   @HttpCode(200)
   @ApiOperation({
     summary: 'Sync employee data from ewihub.com',
     description:
-      'Super-admin endpoint. Logs in to ewihub.com with the supplied ' +
-      'organization-user credentials, scrapes every employee profile, ' +
-      'and upserts the data into this organization. Existing employees ' +
-      '(matched by email) are updated; new ones are created.',
+      'Logs in to ewihub.com with the supplied organization-user ' +
+      'credentials, scrapes every employee profile, and upserts the data. ' +
+      'Existing employees (matched by email) are updated; new ones are created.',
   })
   @ApiResponse({ status: 200, type: SyncResultRo })
   @ApiResponse({ status: 401, description: 'EWI Hub credentials invalid' })
@@ -153,7 +183,45 @@ export class OrganizationController {
     @Param() { id }: IdDto,
     @Body() dto: SyncEwihubDto,
   ): Promise<SyncResultRo> {
-    await this.organizationService.findOne(id);
-    return this.ewihubScraperService.scrapeAndSync(id, dto.email, dto.password);
+    return this.ewihubScraperService.scrapeAndSyncWithCredentials(
+      id,
+      dto.email,
+      dto.password,
+    );
+  }
+
+  @Post('seed')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Seed organizations from a JSON file upload' })
+  @ApiBody({
+    description: 'JSON file containing an array of organization seed objects',
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({ status: 200, type: SeedResultRo })
+  @ApiResponse({ status: 400, description: 'Invalid JSON or missing file' })
+  async seedFromFile(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 5 MB
+          new FileTypeValidator({ fileType: 'application/json' }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ): Promise<SeedResultRo> {
+    const data = JSON.parse(file.buffer.toString('utf-8'));
+    return this.seedService.seedFromData(data);
   }
 }
