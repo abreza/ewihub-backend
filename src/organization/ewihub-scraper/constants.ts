@@ -1,6 +1,65 @@
 export const MAX_RETRIES = 10;
-export const DELAY_MS = 500;
-export const CONCURRENCY = 2;
+
+export const MIN_DELAY_MS = 300;
+export const MAX_DELAY_MS = 800;
+export const CONCURRENCY = 1;
+
+export function randomDelay(min = MIN_DELAY_MS, max = MAX_DELAY_MS): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+export function humanSleep(min = MIN_DELAY_MS, max = MAX_DELAY_MS): Promise<void> {
+  return new Promise((r) => setTimeout(r, randomDelay(min, max)));
+}
+
+export interface BrowserProfile {
+  userAgent: string;
+  secChUa: string;
+  secChUaPlatform: string;
+  secChUaMobile: string;
+}
+
+export const BROWSER_PROFILES: BrowserProfile[] = [
+  {
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    secChUa: '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    secChUaPlatform: '"Windows"',
+    secChUaMobile: '?0',
+  },
+  {
+    userAgent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    secChUa: '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    secChUaPlatform: '"macOS"',
+    secChUaMobile: '?0',
+  },
+  {
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    secChUa: '"Google Chrome";v="130", "Chromium";v="130", "Not_A Brand";v="99"',
+    secChUaPlatform: '"Windows"',
+    secChUaMobile: '?0',
+  },
+  {
+    userAgent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    secChUa: '"Google Chrome";v="130", "Chromium";v="130", "Not_A Brand";v="99"',
+    secChUaPlatform: '"macOS"',
+    secChUaMobile: '?0',
+  },
+  {
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0',
+    secChUa: '', // Firefox doesn't send sec-ch-ua
+    secChUaPlatform: '',
+    secChUaMobile: '',
+  },
+];
+
+export function pickBrowserProfile(): BrowserProfile {
+  return BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)];
+}
 
 export const ATTR_ALIASES: Record<string, string> = {
   started: 'startedOn',

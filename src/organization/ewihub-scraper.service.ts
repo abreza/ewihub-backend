@@ -13,7 +13,10 @@ import {
   Organization,
   OrganizationDocument,
 } from './schemas/organization.schema';
-import { CONCURRENCY, DELAY_MS } from './ewihub-scraper/constants';
+import {
+  CONCURRENCY,
+  humanSleep,
+} from './ewihub-scraper/constants';
 import { HttpSession } from './ewihub-scraper/http-session';
 import { EwihubScraperParser } from './ewihub-scraper/parser';
 import {
@@ -37,7 +40,6 @@ export class EwihubScraperService {
     private readonly orgModel: Model<OrganizationDocument>,
   ) { }
 
-
   async scrapeAndSync(orgId: string): Promise<SyncResult> {
     const adminEmail = this.configService.get<string>('EWIHUB_ADMIN_EMAIL');
     const adminPassword = this.configService.get<string>('EWIHUB_ADMIN_PASSWORD');
@@ -54,6 +56,10 @@ export class EwihubScraperService {
     const orgAbbreviation = org.abbreviation.toLowerCase();
 
     const adminSession = new HttpSession();
+
+    this.logger.log('Warming up session (visiting homepage)...');
+    await adminSession.fetch('https://ewihub.com');
+
     this.logger.log(`Logging in to ewihub.com as admin (${adminEmail})...`);
     await this.login(adminSession, adminEmail, adminPassword);
     this.logger.log('Admin login successful');
@@ -76,6 +82,8 @@ export class EwihubScraperService {
       password: tempPassword,
     });
 
+    await humanSleep();
+
     const editRes2 = await adminSession.fetch(editUrl);
     const editHtml2 = await editRes2.text();
     const pageData2 = this.parser.parseOrgEditPage(editHtml2);
@@ -83,6 +91,9 @@ export class EwihubScraperService {
 
     try {
       const scraperSession = new HttpSession();
+
+      await scraperSession.fetch('https://ewihub.com');
+
       this.logger.log(`Logging in as temp user: ${tempEmail}`);
       await this.login(scraperSession, tempEmail, tempPassword);
       this.logger.log('Temp user login successful');
@@ -151,13 +162,15 @@ export class EwihubScraperService {
     }
   }
 
-
   async scrapeAndSyncWithCredentials(
     orgId: string,
     email: string,
     password: string,
   ): Promise<SyncResult> {
     const session = new HttpSession();
+
+    this.logger.log('Warming up session...');
+    await session.fetch('https://ewihub.com');
 
     this.logger.log(`Logging in to ewihub.com as ${email}...`);
     await this.login(session, email, password);
@@ -198,7 +211,13 @@ export class EwihubScraperService {
     pageData: OrgEditPageData,
     userOp:
       | { action: 'add'; name: string; email: string; password: string }
-      | { action: 'delete'; id: string; name: string; email: string; password: string },
+      | {
+        action: 'delete';
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+      },
   ): Promise<void> {
     const boundary = `----WebKitFormBoundary${crypto.randomBytes(8).toString('hex')}`;
 
@@ -271,13 +290,15 @@ export class EwihubScraperService {
 
     const resText = await res.text();
 
-    if (resText.includes('These credentials do not match') || res.status >= 400) {
+    if (
+      resText.includes('These credentials do not match') ||
+      res.status >= 400
+    ) {
       throw new BadRequestException(
         `Org form submission failed (status ${res.status})`,
       );
     }
   }
-
 
   private async login(
     session: HttpSession,
@@ -324,6 +345,11 @@ export class EwihubScraperService {
       links = this.parser.parseEmployeeLinks(html);
     }
 
+    for (let i = links.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [links[i], links[j]] = [links[j], links[i]];
+    }
+
     return links;
   }
 
@@ -341,12 +367,15 @@ export class EwihubScraperService {
           const res = await session.fetch(links[i]);
           const html = await res.text();
           results[i] = this.parser.parseEmployeeProfile(html, links[i]);
-          await new Promise((r) => setTimeout(r, DELAY_MS));
+
+          await humanSleep();
         } catch (err) {
           this.logger.warn(
             `Failed to scrape ${links[i]}: ${(err as Error).message}`,
           );
           results[i] = null as any;
+
+          await humanSleep();
         }
       }
     };
@@ -428,7 +457,8 @@ export class EwihubScraperService {
       if (existing) {
         existing.status = parsed.status;
         if (parsed.startedDate) existing.startedDate = parsed.startedDate;
-        if (parsed.completedDate) existing.completedDate = parsed.completedDate;
+        if (parsed.completedDate)
+          existing.completedDate = parsed.completedDate;
         if (parsed.courseData) existing.courseData = parsed.courseData;
       } else {
         employee.trainings.push(parsed as any);

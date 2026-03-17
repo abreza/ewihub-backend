@@ -1,30 +1,20 @@
-import axios, { AxiosInstance, AxiosResponse, AxiosRequestConfig } from 'axios';
-import { MAX_RETRIES } from './constants';
+import { MAX_RETRIES, pickBrowserProfile, humanSleep, BrowserProfile } from './constants';
 
 export class HttpSession {
   private cookies: Record<string, string> = {};
-  private readonly client: AxiosInstance;
+  private readonly profile: BrowserProfile;
+  private lastUrl: string = '';
 
   constructor() {
-    this.client = axios.create({
-      maxRedirects: 0,
-      validateStatus: () => true,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
-        Accept:
-          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        Connection: 'keep-alive',
-      },
-    });
+    this.profile = pickBrowserProfile();
   }
 
-  private storeCookies(res: AxiosResponse): void {
-    const setCookieHeaders = res.headers['set-cookie'];
-    if (!setCookieHeaders) return;
-
-    for (const c of setCookieHeaders) {
+  private storeCookies(res: Response): void {
+    const raw: string[] =
+      (res.headers as any).getSetCookie?.() ??
+      (res.headers as any).raw?.()['set-cookie'] ??
+      [];
+    for (const c of raw) {
       const [pair] = c.split(';');
       const [name, ...rest] = pair.split('=');
       this.cookies[name.trim()] = rest.join('=').trim();
@@ -37,59 +27,114 @@ export class HttpSession {
       .join('; ');
   }
 
+
+  private buildHeaders(
+    url: string,
+    opts: RequestInit & { headers?: Record<string, string> },
+  ): Record<string, string> {
+    const isNavigation = !opts.method || opts.method === 'GET';
+    const isForm =
+      opts.method === 'POST' &&
+      (opts.headers?.['Content-Type'] || '').includes('urlencoded');
+    const isMultipart =
+      opts.method === 'POST' &&
+      (opts.headers?.['Content-Type'] || '').includes('multipart');
+
+    const parsed = new URL(url);
+    const origin = parsed.origin;
+
+    const headers: Record<string, string> = {
+      'User-Agent': this.profile.userAgent,
+      Accept: isNavigation
+        ? 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'
+        : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br, zstd',
+      Connection: 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      Cookie: this.cookieHeader(),
+    };
+
+    if (this.profile.secChUa) {
+      headers['Sec-Ch-Ua'] = this.profile.secChUa;
+      headers['Sec-Ch-Ua-Mobile'] = this.profile.secChUaMobile;
+      headers['Sec-Ch-Ua-Platform'] = this.profile.secChUaPlatform;
+    }
+
+    if (this.profile.secChUa) {
+      if (isNavigation) {
+        headers['Sec-Fetch-Dest'] = 'document';
+        headers['Sec-Fetch-Mode'] = 'navigate';
+        headers['Sec-Fetch-Site'] = this.lastUrl ? 'same-origin' : 'none';
+        headers['Sec-Fetch-User'] = '?1';
+      } else if (isForm || isMultipart) {
+        headers['Sec-Fetch-Dest'] = 'document';
+        headers['Sec-Fetch-Mode'] = 'navigate';
+        headers['Sec-Fetch-Site'] = 'same-origin';
+        headers['Sec-Fetch-User'] = '?1';
+      }
+    }
+
+    if (this.lastUrl) {
+      const lastParsed = new URL(this.lastUrl);
+      if (lastParsed.origin === origin) {
+        headers['Referer'] = this.lastUrl;
+      }
+    }
+
+    if (opts.method === 'POST') {
+      headers['Origin'] = origin;
+    }
+
+    if (isNavigation && !this.lastUrl) {
+      headers['Cache-Control'] = 'no-cache';
+      headers['Pragma'] = 'no-cache';
+    }
+
+    if (opts.headers) {
+      Object.assign(headers, opts.headers);
+    }
+
+    return headers;
+  }
+
+
   async fetch(
     url: string,
-    opts: {
-      method?: string;
-      headers?: Record<string, string>;
-      body?: string;
-    } = {},
-  ): Promise<{ text: () => Promise<string>; status: number; headers: Headers }> {
-    const config: AxiosRequestConfig = {
-      url,
-      method: (opts.method as AxiosRequestConfig['method']) || 'GET',
-      headers: {
-        Cookie: this.cookieHeader(),
-        ...opts.headers,
-      },
-      data: opts.body,
-      responseType: 'text',
-    };
+    opts: RequestInit & { headers?: Record<string, string> } = {},
+  ): Promise<Response> {
+    const headers = this.buildHeaders(url, opts);
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const res = await this.client.request(config);
+        const res = await fetch(url, {
+          ...opts,
+          headers,
+          redirect: 'manual',
+        });
 
         this.storeCookies(res);
 
         if ([301, 302, 303, 307, 308].includes(res.status)) {
-          const location = res.headers['location'];
+          const location = res.headers.get('location');
           if (location) {
+            this.lastUrl = url;
             const next = new URL(location, url).href;
-            return this.fetch(next);
+            if (res.status === 303) {
+              return this.fetch(next);
+            }
+            return this.fetch(next, res.status === 307 || res.status === 308 ? opts : {});
           }
         }
 
-        return {
-          status: res.status,
-          headers: new Headers(
-            Object.entries(res.headers).reduce(
-              (acc, [k, v]) => {
-                if (typeof v === 'string') acc[k] = v;
-                return acc;
-              },
-              {} as Record<string, string>,
-            ),
-          ),
-          text: async () =>
-            typeof res.data === 'string'
-              ? res.data
-              : JSON.stringify(res.data),
-        };
+        this.lastUrl = url;
+
+        return res;
       } catch (err) {
         if (attempt < MAX_RETRIES) {
-          const wait = attempt * 2000;
-          await new Promise((r) => setTimeout(r, wait));
+          const base = attempt * 2000;
+          const jitter = Math.floor(Math.random() * 1000);
+          await new Promise((r) => setTimeout(r, base + jitter));
         } else {
           throw err;
         }
