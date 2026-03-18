@@ -8,6 +8,7 @@ import { PaginatedRo } from './dto/paginated.ro';
 import { CourseReportRowRo } from './dto/course-report-row.ro';
 import { ProgramStatsRo, CourseStatsRo } from './dto/program-stats.ro';
 import { DiscomfortSummaryRo } from './dto/discomfort-summary.ro';
+import { ChartAggregationRo } from './dto/chart-aggregation.ro';
 import { COMPLETED_STATUSES, IN_PROGRESS_STATUSES } from './constants';
 
 @Injectable()
@@ -35,7 +36,12 @@ export class EmployeeReportingService {
 
     const courseMap = new Map<
       string,
-      { enrolled: number; completed: number; inProgress: number; breakdown: Record<string, number> }
+      {
+        enrolled: number;
+        completed: number;
+        inProgress: number;
+        breakdown: Record<string, number>;
+      }
     >();
 
     for (const emp of employees) {
@@ -88,7 +94,9 @@ export class EmployeeReportingService {
     }
 
     const completionRate =
-      totalEnrolled > 0 ? Math.round((totalCompleted / totalEnrolled) * 100) : 0;
+      totalEnrolled > 0
+        ? Math.round((totalCompleted / totalEnrolled) * 100)
+        : 0;
 
     return plainToInstance(
       ProgramStatsRo,
@@ -188,7 +196,11 @@ export class EmployeeReportingService {
       for (const entry of parts) {
         const key = entry?.bodyPart;
         const severity = entry?.severity;
-        if (typeof key === 'string' && typeof severity === 'number' && severity > 0) {
+        if (
+          typeof key === 'string' &&
+          typeof severity === 'number' &&
+          severity > 0
+        ) {
           countMap[key] = (countMap[key] || 0) + 1;
           sumMap[key] = (sumMap[key] || 0) + severity;
         }
@@ -197,7 +209,12 @@ export class EmployeeReportingService {
 
     const countData: Record<string, number> = {};
     const avgData: Record<string, number> = {};
-    const details: { key: string; count: number; totalSeverity: number; avgSeverity: number }[] = [];
+    const details: {
+      key: string;
+      count: number;
+      totalSeverity: number;
+      avgSeverity: number;
+    }[] = [];
 
     for (const key of Object.keys(countMap)) {
       const count = countMap[key];
@@ -219,6 +236,124 @@ export class EmployeeReportingService {
       { countData, avgData, details },
       { excludeExtraneousValues: true },
     );
+  }
+
+  async aggregateChartData(
+    course: string,
+    orgFilter: string | null,
+  ): Promise<ChartAggregationRo> {
+    const filter: QueryFilter<EmployeeDocument> = {
+      'trainings.course': course,
+    };
+    this.applyOrgFilter(filter, orgFilter);
+
+    const employees = await this.employeeModel.find(filter).exec();
+
+    const resultCounts: Record<string, number> = {};
+    const issueCounts: Record<string, number> = {};
+    const actionCounts: Record<string, number> = {};
+    const equipmentCounts: Record<string, number> = {};
+
+    for (const emp of employees) {
+      const training = emp.trainings.find((t) => t.course === course);
+      if (!training) continue;
+
+      const cd = training.courseData as Record<string, any> | null;
+
+      const resultLabel = this.mapStatusToResultLabel(training.status);
+      if (resultLabel) {
+        resultCounts[resultLabel] = (resultCounts[resultLabel] || 0) + 1;
+      }
+
+      if (!cd || IN_PROGRESS_STATUSES.includes(training.status)) continue;
+
+      const issueLabel = this.buildIssueLabel(cd);
+      if (issueLabel) {
+        issueCounts[issueLabel] = (issueCounts[issueLabel] || 0) + 1;
+      }
+
+      const actions = cd.actions;
+      if (Array.isArray(actions)) {
+        for (const action of actions) {
+          if (typeof action === 'string' && action.trim()) {
+            actionCounts[action.trim()] =
+              (actionCounts[action.trim()] || 0) + 1;
+          }
+        }
+      }
+
+      const equipment = cd.equipment;
+      if (Array.isArray(equipment)) {
+        for (const item of equipment) {
+          if (typeof item === 'string' && item.trim()) {
+            equipmentCounts[item.trim()] =
+              (equipmentCounts[item.trim()] || 0) + 1;
+          }
+        }
+      }
+    }
+
+    return plainToInstance(
+      ChartAggregationRo,
+      {
+        result: resultCounts,
+        issues: issueCounts,
+        actions: actionCounts,
+        equipment: equipmentCounts,
+      },
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  private mapStatusToResultLabel(status: string): string | null {
+    switch (status) {
+      case 'pass':
+      case 'completed':
+      case 'finished':
+        return 'Pass';
+      case 'action':
+        return 'Action Needed';
+      case 'assessment':
+        return 'Assessment';
+      case 'pending':
+      case 'started':
+        return 'In Progress';
+      default:
+        return status || null;
+    }
+  }
+
+  private buildIssueLabel(cd: Record<string, any>): string | null {
+    const issues = cd.issues;
+
+    if (issues?.raw && typeof issues.raw === 'string' && issues.raw.trim()) {
+      const raw = issues.raw.trim();
+      if (/^no\s*issues?$/i.test(raw)) return 'No issues';
+      return raw;
+    }
+
+    const parts: string[] = [];
+
+    const recs = issues?.recommendations;
+    if (Array.isArray(recs) && recs.length > 0) {
+      parts.push('Recommend Equipment:  ' + recs.join(', '));
+    }
+
+    const actionItems = issues?.actionItems;
+    if (Array.isArray(actionItems) && actionItems.length > 0) {
+      parts.push('Action Items:  ' + actionItems.join(', '));
+    }
+
+    const suggestions = issues?.suggestions;
+    if (Array.isArray(suggestions) && suggestions.length > 0) {
+      parts.push('Suggestions:  ' + suggestions.join(', '));
+    }
+
+    if (parts.length > 0) {
+      return parts.join('  ');
+    }
+
+    return 'No issues';
   }
 
   private resolvePath(obj: any, path: string): any {

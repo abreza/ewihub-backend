@@ -37,6 +37,7 @@ import { PaginatedCourseReportRo } from './dto/paginated-course-report.ro';
 import { ProgramStatsRo } from './dto/program-stats.ro';
 import { CourseReportRowRo } from './dto/course-report-row.ro';
 import { DiscomfortSummaryRo } from './dto/discomfort-summary.ro';
+import { ChartAggregationRo } from './dto/chart-aggregation.ro';
 import { LmsPayloadDto } from './dto/lms-payload.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrgMemberGuard } from '../auth/guards/org-member.guard';
@@ -56,7 +57,7 @@ export class EmployeeController {
     private readonly employeeService: EmployeeService,
     private readonly reportingService: EmployeeReportingService,
     private readonly lmsService: EmployeeLmsService,
-  ) { }
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new employee' })
@@ -95,7 +96,11 @@ export class EmployeeController {
     @Param('course') course: string,
     @Query() query: QueryEmployeesDto,
   ): Promise<PaginatedRo<CourseReportRowRo>> {
-    return this.reportingService.getCourseReport(course, query, getOrgFilter(req));
+    return this.reportingService.getCourseReport(
+      course,
+      query,
+      getOrgFilter(req),
+    );
   }
 
   @Get('reports/:course/body-aggregation')
@@ -113,7 +118,30 @@ export class EmployeeController {
     @Param('course') course: string,
     @Query('dataPath') dataPath: string = 'bodyPartsDiscomfort',
   ): Promise<DiscomfortSummaryRo> {
-    return this.reportingService.aggregateBodyPartData(course, dataPath, getOrgFilter(req));
+    return this.reportingService.aggregateBodyPartData(
+      course,
+      dataPath,
+      getOrgFilter(req),
+    );
+  }
+
+  @Get('reports/:course/chart-aggregation')
+  @ApiOperation({
+    summary: 'Get aggregated chart data (result, issues, actions, equipment)',
+    description:
+      'Returns aggregated counts for result breakdown, issues, actions, and equipment ' +
+      'across all employees for the specified course. Powers the tabbed donut charts.',
+  })
+  @ApiParam({ name: 'course', example: 'Self Assessment' })
+  @ApiResponse({ status: 200, type: ChartAggregationRo })
+  async getChartAggregation(
+    @Req() req: Request,
+    @Param('course') course: string,
+  ): Promise<ChartAggregationRo> {
+    return this.reportingService.aggregateChartData(
+      course,
+      getOrgFilter(req),
+    );
   }
 
   @Get(':id')
@@ -171,7 +199,12 @@ export class EmployeeController {
     @Param('trainingId') trainingId: string,
     @Body() dto: UpdateTrainingDto,
   ): Promise<TrainingRo> {
-    return this.employeeService.updateTraining(id, trainingId, dto, getOrgFilter(req));
+    return this.employeeService.updateTraining(
+      id,
+      trainingId,
+      dto,
+      getOrgFilter(req),
+    );
   }
 
   @Delete(':id/trainings/:trainingId')
@@ -183,7 +216,11 @@ export class EmployeeController {
     @Param() { id }: IdDto,
     @Param('trainingId') trainingId: string,
   ): Promise<void> {
-    return this.employeeService.removeTraining(id, trainingId, getOrgFilter(req));
+    return this.employeeService.removeTraining(
+      id,
+      trainingId,
+      getOrgFilter(req),
+    );
   }
 
   @Public()
@@ -203,12 +240,18 @@ export class EmployeeController {
       type: 'object',
       properties: {
         success: { type: 'boolean', example: true },
-        message: { type: 'string', example: 'Training record created for john@company.com' },
+        message: {
+          type: 'string',
+          example: 'Training record created for john@company.com',
+        },
       },
     },
   })
   @ApiResponse({ status: 401, description: 'Invalid or inactive API key' })
-  @ApiResponse({ status: 400, description: 'Bad request / course not enabled' })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request / course not enabled',
+  })
   async receiveLmsData(
     @Body() payload: LmsPayloadDto,
   ): Promise<{ success: boolean; message: string }> {
