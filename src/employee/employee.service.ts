@@ -69,8 +69,16 @@ export class EmployeeService {
     const limit = query.limit ?? 10;
     const skip = (page - 1) * limit;
 
+    const sortField = query.sortBy ?? 'createdAt';
+    const sortDirection = query.sortOrder === 'asc' ? 1 : -1;
+
     const [employees, total] = await Promise.all([
-      this.employeeModel.find(filter).skip(skip).limit(limit).exec(),
+      this.employeeModel
+        .find(filter)
+        .sort({ [sortField]: sortDirection })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
       this.employeeModel.countDocuments(filter).exec(),
     ]);
 

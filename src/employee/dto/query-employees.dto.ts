@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsInt, IsIn, Min, Max } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -17,6 +17,26 @@ export class QueryEmployeesDto {
   @IsString()
   @IsOptional()
   status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Sort field',
+    default: 'createdAt',
+    enum: ['name', 'email', 'createdAt', 'updatedAt'],
+  })
+  @IsString()
+  @IsIn(['name', 'email', 'createdAt', 'updatedAt'])
+  @IsOptional()
+  sortBy?: string = 'createdAt';
+
+  @ApiPropertyOptional({
+    description: 'Sort direction',
+    default: 'desc',
+    enum: ['asc', 'desc'],
+  })
+  @IsString()
+  @IsIn(['asc', 'desc'])
+  @IsOptional()
+  sortOrder?: 'asc' | 'desc' = 'desc';
 
   @ApiPropertyOptional({ description: 'Page number', default: 1, minimum: 1 })
   @Type(() => Number)
