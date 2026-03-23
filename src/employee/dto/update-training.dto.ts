@@ -39,4 +39,9 @@ export class UpdateTrainingDto {
   @Type(() => SelfAssessmentCourseDataDto)
   @IsOptional()
   courseData?: CourseDataDto;
+
+  @ApiPropertyOptional({ description: 'Follow-up status' })
+  @IsString()
+  @IsOptional()
+  followUpStatus?: string;
 }

@@ -47,4 +47,19 @@ export class CreateOrganizationDto {
   @IsBoolean()
   @IsOptional()
   active?: boolean;
+
+  @ApiPropertyOptional({ description: 'Enable follow-up status tracking for Self Assessment', default: false })
+  @IsBoolean()
+  @IsOptional()
+  enableFollowUpStatus?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Custom follow-up status options',
+    type: [String],
+    example: ['Not Assigned', 'Assigned', 'Case Closed'],
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  followUpStatuses?: string[];
 }

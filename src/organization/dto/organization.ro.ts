@@ -35,6 +35,14 @@ export class OrganizationListItemRo {
   @Expose()
   @ApiProperty({ description: 'Is active' })
   active: boolean;
+
+  @Expose()
+  @ApiProperty({ description: 'Enable follow-up status' })
+  enableFollowUpStatus: boolean;
+
+  @Expose()
+  @ApiProperty({ description: 'Follow-up status options', type: [String] })
+  followUpStatuses: string[];
 }
 
 export class OrganizationDetailRo {
@@ -83,6 +91,14 @@ export class OrganizationDetailRo {
   @Expose()
   @ApiProperty({ description: 'Departments', type: [String] })
   departments: string[];
+
+  @Expose()
+  @ApiProperty({ description: 'Enable follow-up status' })
+  enableFollowUpStatus: boolean;
+
+  @Expose()
+  @ApiProperty({ description: 'Follow-up status options', type: [String] })
+  followUpStatuses: string[];
 
   @Expose()
   @ApiProperty({ description: 'Creation timestamp' })

@@ -57,7 +57,7 @@ export class EmployeeController {
     private readonly employeeService: EmployeeService,
     private readonly reportingService: EmployeeReportingService,
     private readonly lmsService: EmployeeLmsService,
-  ) {}
+  ) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new employee' })
@@ -256,5 +256,23 @@ export class EmployeeController {
     @Body() payload: LmsPayloadDto,
   ): Promise<{ success: boolean; message: string }> {
     return this.lmsService.receiveLmsData(payload);
+  }
+
+  @Patch(':id/trainings/:trainingId/follow-up-status')
+  @ApiOperation({ summary: 'Update follow-up status of a training' })
+  @ApiParam({ name: 'trainingId' })
+  @ApiResponse({ status: 200, type: TrainingRo })
+  async updateFollowUpStatus(
+    @Req() req: Request,
+    @Param() { id }: IdDto,
+    @Param('trainingId') trainingId: string,
+    @Body() body: { followUpStatus: string },
+  ): Promise<TrainingRo> {
+    return this.employeeService.updateTraining(
+      id,
+      trainingId,
+      { followUpStatus: body.followUpStatus },
+      getOrgFilter(req),
+    );
   }
 }

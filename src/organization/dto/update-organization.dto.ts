@@ -45,4 +45,15 @@ export class UpdateOrganizationDto {
   @IsBoolean()
   @IsOptional()
   active?: boolean;
+
+  @ApiPropertyOptional({ description: 'Enable follow-up status tracking for Self Assessment' })
+  @IsBoolean()
+  @IsOptional()
+  enableFollowUpStatus?: boolean;
+
+  @ApiPropertyOptional({ description: 'Custom follow-up status options', type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  followUpStatuses?: string[];
 }

@@ -39,4 +39,12 @@ export class CourseReportRowRo {
     description: 'Course-specific result extracted from courseData',
   })
   result: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ description: 'Follow-up status' })
+  followUpStatus: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ description: 'Training ID' })
+  trainingId: string | null;
 }

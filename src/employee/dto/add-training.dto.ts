@@ -62,4 +62,9 @@ export class AddTrainingDto {
   })
   @IsOptional()
   courseData?: CourseDataDto;
+
+  @ApiPropertyOptional({ description: 'Follow-up status', example: 'Not Assigned' })
+  @IsString()
+  @IsOptional()
+  followUpStatus?: string;
 }

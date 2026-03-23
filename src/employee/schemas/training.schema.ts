@@ -23,6 +23,9 @@ export class Training {
     }),
   )
   courseData: Record<string, any> | null;
+
+  @Prop({ type: String, default: null })
+  followUpStatus: string | null;
 }
 
 export const TrainingSchema = SchemaFactory.createForClass(Training);

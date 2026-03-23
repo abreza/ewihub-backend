@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { DEFAULT_FOLLOW_UP_STATUSES } from 'src/employee/constants/follow-up-statuses';
 
 export type OrganizationDocument = Organization & Document;
 
@@ -31,6 +32,12 @@ export class Organization {
 
   @Prop({ type: [String], default: ['Default'] })
   departments: string[];
+
+  @Prop({ default: false })
+  enableFollowUpStatus: boolean;
+
+  @Prop({ type: [String], default: DEFAULT_FOLLOW_UP_STATUSES })
+  followUpStatuses: string[];
 
   createdAt: Date;
   updatedAt: Date;

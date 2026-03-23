@@ -158,6 +158,7 @@ export class EmployeeReportingService {
           startedDate: training?.startedDate ?? null,
           completedDate: training?.completedDate ?? null,
           result: training?.courseData?.result ?? null,
+          followUpStatus: training?.followUpStatus ?? null,
         },
         { excludeExtraneousValues: true },
       );

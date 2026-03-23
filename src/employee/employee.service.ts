@@ -140,6 +140,7 @@ export class EmployeeService {
       startedDate: dto.startedDate || null,
       completedDate: dto.completedDate || null,
       courseData: dto.courseData || null,
+      followUpStatus: dto.followUpStatus || null,
     });
 
     const saved = await employee.save();
@@ -165,6 +166,7 @@ export class EmployeeService {
     if (dto.startedDate !== undefined) training.startedDate = dto.startedDate;
     if (dto.completedDate !== undefined) training.completedDate = dto.completedDate;
     if (dto.courseData !== undefined) training.courseData = dto.courseData;
+    if (dto.followUpStatus !== undefined) training.followUpStatus = dto.followUpStatus;
 
     await employee.save();
     return plainToInstance(TrainingRo, (training as any).toObject?.() ?? training, { excludeExtraneousValues: true });
