@@ -195,16 +195,11 @@ export class EmployeeController {
   @ApiResponse({ status: 200, type: TrainingRo })
   async updateTraining(
     @Req() req: Request,
-    @Param() { id }: IdDto,
+    @Param('id') id: string,
     @Param('trainingId') trainingId: string,
     @Body() dto: UpdateTrainingDto,
   ): Promise<TrainingRo> {
-    return this.employeeService.updateTraining(
-      id,
-      trainingId,
-      dto,
-      getOrgFilter(req),
-    );
+    return this.employeeService.updateTraining(id, trainingId, dto, getOrgFilter(req));
   }
 
   @Delete(':id/trainings/:trainingId')
@@ -213,7 +208,7 @@ export class EmployeeController {
   @ApiResponse({ status: 200, description: 'Training removed' })
   async removeTraining(
     @Req() req: Request,
-    @Param() { id }: IdDto,
+    @Param('id') id: string,
     @Param('trainingId') trainingId: string,
   ): Promise<void> {
     return this.employeeService.removeTraining(
@@ -264,7 +259,7 @@ export class EmployeeController {
   @ApiResponse({ status: 200, type: TrainingRo })
   async updateFollowUpStatus(
     @Req() req: Request,
-    @Param() { id }: IdDto,
+    @Param('id') id: string,
     @Param('trainingId') trainingId: string,
     @Body() body: { followUpStatus: string },
   ): Promise<TrainingRo> {
