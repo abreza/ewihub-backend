@@ -49,7 +49,7 @@ export class AuthService {
   async login(loginDto: LoginDto): Promise<LoginRo> {
     const user = await this.validateUser(loginDto.username, loginDto.password);
     if (!user) {
-      throw new UnauthorizedException('نام کاربری یا رمز عبور نادرست است');
+      throw new UnauthorizedException('Invalid username or password');
     }
 
     const payload: JwtPayload = {

@@ -72,7 +72,7 @@ export class UserService implements OnModuleInit {
       .exec();
 
     if (existingUser) {
-      throw new ConflictException('نام کاربری قبلاً وجود دارد');
+      throw new ConflictException('Username already exists');
     }
 
     const existingEmail = await this.userModel
@@ -80,7 +80,7 @@ export class UserService implements OnModuleInit {
       .exec();
 
     if (existingEmail) {
-      throw new ConflictException('ایمیل قبلاً وجود دارد');
+      throw new ConflictException('Email already exists');
     }
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
@@ -110,7 +110,7 @@ export class UserService implements OnModuleInit {
   async findOne(id: string): Promise<UserRo> {
     const user = await this.userModel.findById(id).exec();
     if (!user) {
-      throw new NotFoundException(`کاربر با شناسه ${id} یافت نشد`);
+      throw new NotFoundException(`User with ID ${id} not found`);
     }
     return plainToInstance(UserRo, user.toObject(), {
       excludeExtraneousValues: true,
@@ -154,7 +154,7 @@ export class UserService implements OnModuleInit {
       .exec();
 
     if (existingEmail) {
-      throw new ConflictException('ایمیل قبلاً وجود دارد');
+      throw new ConflictException('Email already exists');
     }
 
     const existingUsername = await this.userModel
@@ -162,7 +162,7 @@ export class UserService implements OnModuleInit {
       .exec();
 
     if (existingUsername) {
-      throw new ConflictException('نام کاربری قبلاً وجود دارد');
+      throw new ConflictException('Username already exists');
     }
 
     const hashedPassword = await bcrypt.hash(signupDto.password, 10);
@@ -186,7 +186,7 @@ export class UserService implements OnModuleInit {
   async update(id: string, updateUserDto: UpdateUserDto): Promise<UserRo> {
     const user = await this.userModel.findById(id).exec();
     if (!user) {
-      throw new NotFoundException(`کاربر با شناسه ${id} یافت نشد`);
+      throw new NotFoundException(`User with ID ${id} not found`);
     }
 
     if (updateUserDto.username && updateUserDto.username !== user.username) {
@@ -194,7 +194,7 @@ export class UserService implements OnModuleInit {
         .findOne({ username: updateUserDto.username })
         .exec();
       if (existingUser) {
-        throw new ConflictException('نام کاربری قبلاً وجود دارد');
+        throw new ConflictException('Username already exists');
       }
     }
 
@@ -217,7 +217,7 @@ export class UserService implements OnModuleInit {
   async remove(id: string): Promise<void> {
     const user = await this.userModel.findById(id).exec();
     if (!user) {
-      throw new NotFoundException(`کاربر با شناسه ${id} یافت نشد`);
+      throw new NotFoundException(`User with ID ${id} not found`);
     }
 
     if (user.role === UserRole.SuperAdmin) {
@@ -225,7 +225,7 @@ export class UserService implements OnModuleInit {
         .countDocuments({ role: UserRole.SuperAdmin })
         .exec();
       if (adminCount <= 1) {
-        throw new BadRequestException('امکان حذف آخرین کاربر ادمین وجود ندارد');
+        throw new BadRequestException('Cannot delete the last admin user');
       }
     }
 
@@ -263,7 +263,7 @@ export class UserService implements OnModuleInit {
       .exec();
 
     if (!user) {
-      throw new BadRequestException('توکن بازنشانی نامعتبر یا منقضی شده است');
+      throw new BadRequestException('Reset token is invalid or expired');
     }
 
     user.password = await bcrypt.hash(newPassword, 10);

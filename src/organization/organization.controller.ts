@@ -13,6 +13,8 @@ import {
   ParseFilePipe,
   UploadedFile,
   UseInterceptors,
+  SetMetadata,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -37,10 +39,14 @@ import { SyncResultRo } from './dto/sync-result.ro';
 import { UserRo } from '../user/dto/user.ro';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { OrgMemberGuard } from '../auth/guards/org-member.guard';
+import { SKIP_ADMIN_GUARD_KEY } from '../auth/guards/admin.guard';
 import { IdDto } from '../common/dto/id.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { SeedResultRo } from './dto/seed-result.ro';
 import { OrganizationSeedService } from './seed/organization-seed.service';
+import { CurrentUser, CurrentUserType } from '../auth/decorators/current-user.decorator';
+import { UserRole } from '../user/schemas/user.schema';
 
 @ApiTags('Organizations')
 @ApiBearerAuth()
@@ -71,10 +77,19 @@ export class OrganizationController {
   }
 
   @Get(':id')
+  @SetMetadata(SKIP_ADMIN_GUARD_KEY, true)
+  @UseGuards(OrgMemberGuard)
   @ApiOperation({ summary: 'Get organization detail by ID' })
   @ApiResponse({ status: 200, type: OrganizationDetailRo })
   @ApiResponse({ status: 404, description: 'Organization not found' })
-  async findOne(@Param() { id }: IdDto): Promise<OrganizationDetailRo> {
+  async findOne(
+    @Param() { id }: IdDto,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<OrganizationDetailRo> {
+    if (user.role === UserRole.OrgUser && user.organizationId !== id) {
+      throw new ForbiddenException('You can only access your own organization');
+    }
+
     return this.organizationService.findOne(id);
   }
 
