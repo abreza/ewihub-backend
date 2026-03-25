@@ -15,7 +15,7 @@ function Script1()
 {
   var player = GetPlayer();
 
-player.SetVar('tmis_apiURL', 'https://tmis.peyto.net/api/lms');
+player.SetVar('tmis_apiURL', 'https://ewihub.posechecker.com/api/employees/lms/receive');
 player.SetVar('tmis_apiKey', '---');
 player.SetVar('tmis_debug',1); // 1 or 0
 player.SetVar('tmis_courseSlug', 'self-assessment');
@@ -24,7 +24,7 @@ player.SetVar('tmis_department', 'Default');
 var data = {
 	'id': player.GetVar('newID'),
               'email': player.GetVar('newID'),
-	'name': player.GetVar('newName'),	
+	'name': player.GetVar('newName'),
 	'department': player.GetVar('tmis_department'),
 	'course': player.GetVar('tmis_courseSlug'),
 	'status': 'started',
@@ -64,14 +64,20 @@ function Script2()
 {
   var player = GetPlayer();
 
-var data = {
-	'id': player.GetVar('newID'),
-              'email': player.GetVar('newID'),
-	'name': player.GetVar('newName'),
-	'department': player.GetVar('tmis_department'),
-	'course': player.GetVar('tmis_courseSlug'),
-	'status': 'finished',
-	'apiKey': player.GetVar('tmis_apiKey'),
+var apiURL = 'https://ewihub.posechecker.com/api/employees/lms/receive';
+  var apiKey = '---';
+  var debug = 1;
+  var courseSlug = 'self-assessment';
+  var department = 'Default';
+
+  var data = {
+    'id': player.GetVar('newID'),
+    'email': player.GetVar('newID'),
+    'name': player.GetVar('newName'),
+    'department': department,
+    'course': courseSlug,
+    'status': 'finished',
+    'apiKey': apiKey,
 	'data': {
 		'completedOn': player.GetVar('SystemDate'),
 		'age': player.GetVar('Age'),
@@ -101,7 +107,7 @@ if( player.GetVar('tmis_debug') == 1 ){
 }
 
 if (window.$ != null){
-    $.post(player.GetVar('tmis_apiURL'), data, receiveData, "json");
+    $.post(apiURL, data, receiveData, "json");
     function receiveData(data){
         if( player.GetVar('tmis_debug') == 1 ){
             console.dir(data);
@@ -111,7 +117,7 @@ if (window.$ != null){
 else{
     const dataString = JSON.stringify(data);
     const http = new XMLHttpRequest();
-    http.open('POST', player.GetVar('tmis_apiURL'), true);
+    http.open('POST', apiURL, true);
     http.setRequestHeader('Content-type', 'application/json');
     http.onreadystatechange = function() {
         if(http.readyState == 4 && http.status == 200) {

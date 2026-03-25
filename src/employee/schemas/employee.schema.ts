@@ -6,6 +6,9 @@ export type EmployeeDocument = Employee & Document;
 
 @Schema({ timestamps: true })
 export class Employee {
+  @Prop({ type: String, default: null })
+  lmsLearnerId: string | null;
+
   @Prop({ required: true })
   name: string;
 

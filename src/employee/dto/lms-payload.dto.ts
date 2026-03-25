@@ -2,10 +2,11 @@ import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class LmsPayloadDto {
-  @ApiProperty({ description: 'Learner identifier', example: 'john@company.com' })
+  @ApiPropertyOptional({ description: 'Learner identifier', example: 'john@company.com' })
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  id: string;
+  id?: string;
 
   @ApiProperty({ description: 'Learner email', example: 'john@company.com' })
   @IsString()

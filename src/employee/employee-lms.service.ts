@@ -52,6 +52,7 @@ export class EmployeeLmsService {
 
     if (!employee) {
       employee = new this.employeeModel({
+        lmsLearnerId: payload.id || null,
         name: payload.name,
         email: payload.email,
         organization: org._id,
@@ -59,6 +60,9 @@ export class EmployeeLmsService {
         trainings: [],
       });
     } else {
+      if (payload.id) {
+        employee.lmsLearnerId = payload.id;
+      }
       if (payload.name && payload.name !== employee.name) {
         employee.name = payload.name;
       }
