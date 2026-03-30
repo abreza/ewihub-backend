@@ -9,10 +9,41 @@ import { Model } from 'mongoose';
 import { Employee, EmployeeDocument } from './schemas/employee.schema';
 import { LmsPayloadDto } from './dto/lms-payload.dto';
 import { OrganizationService } from '../organization/organization.service';
+import { COMPLETED_STATUSES, IN_PROGRESS_STATUSES } from './constants';
 
 const COURSE_SLUG_MAP: Record<string, string> = {
   'self-assessment': 'Self Assessment',
   'office-ergonomics': 'Office Ergonomics',
+};
+
+const DISCOMFORT_AREA_TO_BODY_PART: Record<string, string> = {
+  'head': 'head',
+  'neck': 'neck',
+  'eyes': 'eyes',
+  'upper back': 'upperBack',
+  'mid back': 'midBack',
+  'lower back': 'lowerBack',
+  'buttocks': 'buttocks',
+  'left shoulder': 'leftShoulder',
+  'right shoulder': 'rightShoulder',
+  'left upper arm': 'leftUpperArm',
+  'right upper arm': 'rightUpperArm',
+  'left elbow': 'leftElbow',
+  'right elbow': 'rightElbow',
+  'left lower arm': 'leftLowerArm',
+  'right lower arm': 'rightLowerArm',
+  'left wrist': 'leftWrist',
+  'right wrist': 'rightWrist',
+  'left hand': 'leftHand',
+  'right hand': 'rightHand',
+  'left thigh': 'leftThigh',
+  'right thigh': 'rightThigh',
+  'left knee': 'leftKnee',
+  'right knee': 'rightKnee',
+  'left lower leg': 'leftLowerLeg',
+  'right lower leg': 'rightLowerLeg',
+  'left foot or ankle': 'leftFootOrAnkle',
+  'right foot or ankle': 'rightFootOrAnkle',
 };
 
 @Injectable()
@@ -76,34 +107,60 @@ export class EmployeeLmsService {
       ? this.transformCourseData(courseName, payload.data)
       : null;
 
-    const existingTraining = employee.trainings.find(
-      (t) => t.course === courseName,
-    );
-
     const now = new Date().toLocaleDateString('en-US');
 
-    if (existingTraining) {
-      existingTraining.status = status;
-      if (status === 'started' && !existingTraining.startedDate) {
+    const existingTrainings = employee.trainings.filter(
+      (t) => t.course === courseName,
+    );
+    const existingTraining = existingTrainings.length > 0
+      ? existingTrainings[existingTrainings.length - 1]
+      : null;
+
+    if (status === 'started') {
+      if (!existingTraining || COMPLETED_STATUSES.includes(existingTraining.status)) {
+        const training: any = {
+          course: courseName,
+          status,
+          startedDate: now,
+          completedDate: null,
+          courseData: null,
+          followUpStatus: null,
+        };
+        employee.trainings.push(training);
+      } else {
+        existingTraining.status = status;
         existingTraining.startedDate = now;
-      }
-      if (this.isCompletedLmsStatus(status)) {
-        existingTraining.completedDate = payload.data?.completedOn || now;
-      }
-      if (courseData) {
-        existingTraining.courseData = courseData;
+        existingTraining.completedDate = null;
+        existingTraining.courseData = null;
       }
     } else {
-      const training: any = {
-        course: courseName,
-        status,
-        startedDate: status === 'started' ? now : null,
-        completedDate: this.isCompletedLmsStatus(status)
-          ? payload.data?.completedOn || now
-          : null,
-        courseData,
-      };
-      employee.trainings.push(training);
+      if (existingTraining && IN_PROGRESS_STATUSES.includes(existingTraining.status)) {
+        existingTraining.status = status;
+        existingTraining.completedDate = payload.data?.completedOn || now;
+        if (courseData) {
+          existingTraining.courseData = courseData;
+        }
+      } else if (!existingTraining) {
+        const training: any = {
+          course: courseName,
+          status,
+          startedDate: null,
+          completedDate: payload.data?.completedOn || now,
+          courseData,
+          followUpStatus: null,
+        };
+        employee.trainings.push(training);
+      } else {
+        const training: any = {
+          course: courseName,
+          status,
+          startedDate: existingTraining.startedDate, // carry forward if any
+          completedDate: payload.data?.completedOn || now,
+          courseData,
+          followUpStatus: null,
+        };
+        employee.trainings.push(training);
+      }
     }
 
     await employee.save();
@@ -114,7 +171,7 @@ export class EmployeeLmsService {
 
     return {
       success: true,
-      message: `Training record ${existingTraining ? 'updated' : 'created'} for ${payload.email}`,
+      message: `Training record updated for ${payload.email}`,
     };
   }
 
@@ -128,10 +185,6 @@ export class EmployeeLmsService {
       assessment: 'assessment',
     };
     return statusMap[rawStatus.toLowerCase()] || rawStatus;
-  }
-
-  private isCompletedLmsStatus(status: string): boolean {
-    return ['completed', 'finished', 'pass', 'action', 'assessment'].includes(status);
   }
 
   private transformCourseData(
@@ -177,8 +230,11 @@ export class EmployeeLmsService {
     }
 
     let bodyPartsDiscomfort: any[] = [];
-    if (raw.discomfort) {
+    if (raw.discomfort && typeof raw.discomfort !== 'string') {
       bodyPartsDiscomfort = this.parseBodyPartDiscomfort(raw.discomfort);
+    }
+    if (bodyPartsDiscomfort.length === 0 && discomforts.length > 0) {
+      bodyPartsDiscomfort = this.deriveBodyPartsFromDiscomforts(discomforts);
     }
 
     const actions = this.parseStringList(raw.actionNeeded);
@@ -237,11 +293,12 @@ export class EmployeeLmsService {
 
   private parseDiscomfortAreas(val: any): any[] {
     if (Array.isArray(val)) {
-      return val.map((item) =>
-        typeof item === 'string'
-          ? { area: item, severity: null }
-          : { area: item.area || item.bodyPart, severity: item.severity ?? null },
-      );
+      return val.map((item) => {
+        if (typeof item === 'string') {
+          return this.parseDiscomfortEntry(item);
+        }
+        return { area: item.area || item.bodyPart, severity: item.severity ?? null };
+      });
     }
     if (typeof val === 'string') {
       try {
@@ -252,10 +309,47 @@ export class EmployeeLmsService {
           .split(/[,;|]/)
           .map((s: string) => s.trim())
           .filter(Boolean)
-          .map((area: string) => ({ area, severity: null }));
+          .map((entry: string) => this.parseDiscomfortEntry(entry));
       }
     }
     return [];
+  }
+
+  private parseDiscomfortEntry(entry: string): { area: string; severity: number | null } {
+    const match = entry.match(/^(.+?)\s*:\s*(\d+)$/);
+    if (match) {
+      return {
+        area: match[1].trim(),
+        severity: parseInt(match[2], 10),
+      };
+    }
+    return { area: entry.trim(), severity: null };
+  }
+
+  private deriveBodyPartsFromDiscomforts(
+    discomforts: { area: string; severity: number | null }[],
+  ): { bodyPart: string; severity: number }[] {
+    const result: { bodyPart: string; severity: number }[] = [];
+
+    for (const d of discomforts) {
+      if (d.severity == null || d.severity <= 0) continue;
+
+      const key = d.area.toLowerCase().trim();
+      const bodyPart = DISCOMFORT_AREA_TO_BODY_PART[key];
+
+      if (bodyPart) {
+        result.push({ bodyPart, severity: d.severity });
+      } else {
+        const found = Object.entries(DISCOMFORT_AREA_TO_BODY_PART).find(
+          ([displayName]) => key.includes(displayName) || displayName.includes(key),
+        );
+        if (found) {
+          result.push({ bodyPart: found[1], severity: d.severity });
+        }
+      }
+    }
+
+    return result;
   }
 
   private parseBodyPartDiscomfort(val: any): any[] {
