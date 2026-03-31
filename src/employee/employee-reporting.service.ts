@@ -46,7 +46,9 @@ export class EmployeeReportingService {
 
     for (const emp of employees) {
       const seen = new Set<string>();
-      for (const t of emp.trainings) {
+      for (let i = emp.trainings.length - 1; i >= 0; i--) {
+        const t = emp.trainings[i];
+
         if (seen.has(t.course)) continue;
         seen.add(t.course);
 
@@ -145,7 +147,7 @@ export class EmployeeReportingService {
 
     const data = employees.map((emp) => {
       const obj = emp.toObject();
-      const training = obj.trainings.find((t) => t.course === course);
+      const training = [...obj.trainings].reverse().find((t) => t.course === course);
       return plainToInstance(
         CourseReportRowRo,
         {
@@ -191,7 +193,7 @@ export class EmployeeReportingService {
     const sumMap: Record<string, number> = {};
 
     for (const emp of employees) {
-      const training = emp.trainings.find((t) => t.course === course);
+      const training = [...emp.trainings].reverse().find((t) => t.course === course);
       const parts = this.resolvePath(training?.courseData, dataPath);
       if (!Array.isArray(parts)) continue;
 
@@ -257,7 +259,7 @@ export class EmployeeReportingService {
     const equipmentCounts: Record<string, number> = {};
 
     for (const emp of employees) {
-      const training = emp.trainings.find((t) => t.course === course);
+      const training = [...emp.trainings].reverse().find((t) => t.course === course);
       if (!training) continue;
 
       const cd = training.courseData as Record<string, any> | null;

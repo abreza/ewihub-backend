@@ -226,7 +226,8 @@ export class EmployeeService {
     const seen = new Set<string>();
     const trainingStatuses: { course: string; status: string }[] = [];
 
-    for (const t of obj.trainings) {
+    for (let i = obj.trainings.length - 1; i >= 0; i--) {
+      const t = obj.trainings[i];
       if (!seen.has(t.course)) {
         seen.add(t.course);
         trainingStatuses.push({ course: t.course, status: t.status });

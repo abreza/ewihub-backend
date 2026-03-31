@@ -154,7 +154,7 @@ export class EmployeeLmsService {
         const training: any = {
           course: courseName,
           status,
-          startedDate: existingTraining.startedDate, // carry forward if any
+          startedDate: existingTraining.startedDate,
           completedDate: payload.data?.completedOn || now,
           courseData,
           followUpStatus: null,
