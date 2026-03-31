@@ -22,4 +22,9 @@ export class CreateEmployeeDto {
   @IsString()
   @IsOptional()
   oldProfileUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Follow-up status', example: 'Not Assigned' })
+  @IsString()
+  @IsOptional()
+  followUpStatus?: string;
 }

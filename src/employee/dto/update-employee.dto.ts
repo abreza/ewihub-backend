@@ -17,4 +17,9 @@ export class UpdateEmployeeDto {
   @IsString()
   @IsOptional()
   oldProfileUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Follow-up status' })
+  @IsString()
+  @IsOptional()
+  followUpStatus?: string;
 }

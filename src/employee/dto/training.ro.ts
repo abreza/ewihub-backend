@@ -51,8 +51,4 @@ export class TrainingRo {
     }
   })
   courseData: CourseDataRo;
-
-  @Expose()
-  @ApiPropertyOptional({ description: 'Follow-up status' })
-  followUpStatus: string | null;
 }

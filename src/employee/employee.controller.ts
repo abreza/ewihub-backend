@@ -128,9 +128,6 @@ export class EmployeeController {
   @Get('reports/:course/chart-aggregation')
   @ApiOperation({
     summary: 'Get aggregated chart data (result, issues, actions, equipment)',
-    description:
-      'Returns aggregated counts for result breakdown, issues, actions, and equipment ' +
-      'across all employees for the specified course. Powers the tabbed donut charts.',
   })
   @ApiParam({ name: 'course', example: 'Self Assessment' })
   @ApiResponse({ status: 200, type: ChartAggregationRo })
@@ -165,6 +162,21 @@ export class EmployeeController {
     @Body() dto: UpdateEmployeeDto,
   ): Promise<EmployeeDetailRo> {
     return this.employeeService.update(id, dto, getOrgFilter(req));
+  }
+
+  @Patch(':id/follow-up-status')
+  @ApiOperation({ summary: 'Update follow-up status of an employee' })
+  @ApiResponse({ status: 200, type: EmployeeDetailRo })
+  async updateFollowUpStatus(
+    @Req() req: Request,
+    @Param() { id }: IdDto,
+    @Body() body: { followUpStatus: string },
+  ): Promise<EmployeeDetailRo> {
+    return this.employeeService.update(
+      id,
+      { followUpStatus: body.followUpStatus },
+      getOrgFilter(req),
+    );
   }
 
   @Delete(':id')
@@ -223,51 +235,13 @@ export class EmployeeController {
   @HttpCode(200)
   @ApiOperation({
     summary: 'Receive training data from LMS / Storyline',
-    description:
-      'Public endpoint that accepts training submissions from Storyline courses. ' +
-      'Authentication is done via the apiKey field in the payload, which must match ' +
-      'an active organization.',
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Data received successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean', example: true },
-        message: {
-          type: 'string',
-          example: 'Training record created for john@company.com',
-        },
-      },
-    },
-  })
+  @ApiResponse({ status: 200, description: 'Data received successfully' })
   @ApiResponse({ status: 401, description: 'Invalid or inactive API key' })
-  @ApiResponse({
-    status: 400,
-    description: 'Bad request / course not enabled',
-  })
+  @ApiResponse({ status: 400, description: 'Bad request / course not enabled' })
   async receiveLmsData(
     @Body() payload: LmsPayloadDto,
   ): Promise<{ success: boolean; message: string }> {
     return this.lmsService.receiveLmsData(payload);
-  }
-
-  @Patch(':id/trainings/:trainingId/follow-up-status')
-  @ApiOperation({ summary: 'Update follow-up status of a training' })
-  @ApiParam({ name: 'trainingId' })
-  @ApiResponse({ status: 200, type: TrainingRo })
-  async updateFollowUpStatus(
-    @Req() req: Request,
-    @Param('id') id: string,
-    @Param('trainingId') trainingId: string,
-    @Body() body: { followUpStatus: string },
-  ): Promise<TrainingRo> {
-    return this.employeeService.updateTraining(
-      id,
-      trainingId,
-      { followUpStatus: body.followUpStatus },
-      getOrgFilter(req),
-    );
   }
 }

@@ -30,6 +30,10 @@ export class EmployeeListItemRo {
   oldProfileUrl: string | null;
 
   @Expose()
+  @ApiPropertyOptional({ description: 'Follow-up status' })
+  followUpStatus: string | null;
+
+  @Expose()
   @ApiProperty({
     description: 'Status per course',
     type: [TrainingStatusRo],

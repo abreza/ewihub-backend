@@ -124,7 +124,6 @@ export class EmployeeLmsService {
           startedDate: now,
           completedDate: null,
           courseData: null,
-          followUpStatus: null,
         };
         employee.trainings.push(training);
       } else {
@@ -147,7 +146,6 @@ export class EmployeeLmsService {
           startedDate: null,
           completedDate: payload.data?.completedOn || now,
           courseData,
-          followUpStatus: null,
         };
         employee.trainings.push(training);
       } else {
@@ -157,7 +155,6 @@ export class EmployeeLmsService {
           startedDate: existingTraining.startedDate,
           completedDate: payload.data?.completedOn || now,
           courseData,
-          followUpStatus: null,
         };
         employee.trainings.push(training);
       }

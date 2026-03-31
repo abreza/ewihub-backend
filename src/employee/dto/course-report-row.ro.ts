@@ -41,7 +41,7 @@ export class CourseReportRowRo {
   result: string | null;
 
   @Expose()
-  @ApiPropertyOptional({ description: 'Follow-up status' })
+  @ApiPropertyOptional({ description: 'Employee Follow-up status' })
   followUpStatus: string | null;
 
   @Expose()

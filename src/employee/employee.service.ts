@@ -117,7 +117,11 @@ export class EmployeeService {
       }
     }
 
-    Object.assign(employee, dto);
+    if (dto.name !== undefined) employee.name = dto.name;
+    if (dto.email !== undefined) employee.email = dto.email;
+    if (dto.oldProfileUrl !== undefined) employee.oldProfileUrl = dto.oldProfileUrl;
+    if (dto.followUpStatus !== undefined) employee.followUpStatus = dto.followUpStatus;
+
     const saved = await employee.save();
     return plainToInstance(EmployeeDetailRo, saved.toObject(), { excludeExtraneousValues: true });
   }
@@ -140,7 +144,6 @@ export class EmployeeService {
       startedDate: dto.startedDate || null,
       completedDate: dto.completedDate || null,
       courseData: dto.courseData || null,
-      followUpStatus: dto.followUpStatus || null,
     });
 
     const saved = await employee.save();
@@ -166,7 +169,6 @@ export class EmployeeService {
     if (dto.startedDate !== undefined) training.startedDate = dto.startedDate;
     if (dto.completedDate !== undefined) training.completedDate = dto.completedDate;
     if (dto.courseData !== undefined) training.courseData = dto.courseData;
-    if (dto.followUpStatus !== undefined) training.followUpStatus = dto.followUpStatus;
 
     await employee.save();
     return plainToInstance(TrainingRo, (training as any).toObject?.() ?? training, { excludeExtraneousValues: true });
@@ -249,6 +251,7 @@ export class EmployeeService {
       name: raw.name,
       email: raw.email,
       oldProfileUrl: raw.oldProfileUrl || null,
+      followUpStatus: raw.followUpStatus || null,
       trainings,
     };
   }

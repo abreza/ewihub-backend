@@ -30,6 +30,10 @@ export class EmployeeDetailRo {
   department: string | null;
 
   @Expose()
+  @ApiPropertyOptional({ description: 'Follow-up status' })
+  followUpStatus: string | null;
+
+  @Expose()
   @ApiProperty({ description: 'All trainings', type: [TrainingRo] })
   @Type(() => TrainingRo)
   trainings: TrainingRo[];

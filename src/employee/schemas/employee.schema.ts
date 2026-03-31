@@ -24,6 +24,9 @@ export class Employee {
   @Prop({ type: String, default: null })
   department: string | null;
 
+  @Prop({ type: String, default: null })
+  followUpStatus: string | null;
+
   @Prop({ type: [TrainingSchema], default: [] })
   trainings: Training[];
 
