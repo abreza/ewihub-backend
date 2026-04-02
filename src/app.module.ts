@@ -5,6 +5,7 @@ import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
 import { EmployeeModule } from './employee/employee.module';
 import { OrganizationModule } from './organization/organization.module';
+import { S3Module } from './s3/s3.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { OrganizationModule } from './organization/organization.module';
       }),
       inject: [ConfigService],
     }),
+    S3Module,
     UserModule,
     AuthModule,
     EmployeeModule,
@@ -28,4 +30,4 @@ import { OrganizationModule } from './organization/organization.module';
   controllers: [],
   providers: [],
 })
-export class AppModule {}
+export class AppModule { }

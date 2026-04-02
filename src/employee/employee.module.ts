@@ -4,6 +4,7 @@ import { Employee, EmployeeSchema } from './schemas/employee.schema';
 import { EmployeeService } from './employee.service';
 import { EmployeeReportingService } from './employee-reporting.service';
 import { EmployeeLmsService } from './employee-lms.service';
+import { EmployeeAttachmentService } from './employee-attachment.service';
 import { EmployeeController } from './employee.controller';
 import { OrganizationModule } from '../organization/organization.module';
 
@@ -19,7 +20,8 @@ import { OrganizationModule } from '../organization/organization.module';
     EmployeeService,
     EmployeeReportingService,
     EmployeeLmsService,
+    EmployeeAttachmentService,
   ],
   exports: [EmployeeService],
 })
-export class EmployeeModule { }
+export class EmployeeModule {}

@@ -9,6 +9,11 @@ import {
   Query,
   Req,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  UploadedFiles,
+  ParseFilePipe,
+  MaxFileSizeValidator,
   HttpCode,
 } from '@nestjs/common';
 import {
@@ -18,19 +23,25 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiQuery,
+  ApiConsumes,
+  ApiBody,
 } from '@nestjs/swagger';
 import { Request } from 'express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { EmployeeService } from './employee.service';
 import { EmployeeReportingService } from './employee-reporting.service';
 import { EmployeeLmsService } from './employee-lms.service';
+import { EmployeeAttachmentService } from './employee-attachment.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { QueryEmployeesDto } from './dto/query-employees.dto';
 import { AddTrainingDto } from './dto/add-training.dto';
 import { UpdateTrainingDto } from './dto/update-training.dto';
+import { UploadAttachmentDto } from './dto/upload-attachment.dto';
 import { EmployeeDetailRo } from './dto/employee-detail.ro';
 import { EmployeeListItemRo } from './dto/employee-list-item.ro';
 import { TrainingRo } from './dto/training.ro';
+import { AttachmentRo, AttachmentWithUrlRo } from './dto/attachment.ro';
 import { PaginatedRo } from './dto/paginated.ro';
 import { PaginatedEmployeesRo } from './dto/paginated-employees.ro';
 import { PaginatedCourseReportRo } from './dto/paginated-course-report.ro';
@@ -42,7 +53,10 @@ import { LmsPayloadDto } from './dto/lms-payload.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrgMemberGuard } from '../auth/guards/org-member.guard';
 import { Public } from '../auth/decorators/public.decorator';
+import { CurrentUser, CurrentUserType } from '../auth/decorators/current-user.decorator';
 import { IdDto } from '../common/dto/id.dto';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 function getOrgFilter(req: Request): string | null {
   return (req as any).organizationFilter ?? null;
@@ -57,6 +71,7 @@ export class EmployeeController {
     private readonly employeeService: EmployeeService,
     private readonly reportingService: EmployeeReportingService,
     private readonly lmsService: EmployeeLmsService,
+    private readonly attachmentService: EmployeeAttachmentService,
   ) { }
 
   @Post()
@@ -187,6 +202,11 @@ export class EmployeeController {
     @Req() req: Request,
     @Param() { id }: IdDto,
   ): Promise<void> {
+    const employee = await this.employeeService.findEmployeeOrFail(
+      id,
+      getOrgFilter(req),
+    );
+    await this.attachmentService.removeAllAttachments(employee);
     return this.employeeService.remove(id, getOrgFilter(req));
   }
 
@@ -211,7 +231,12 @@ export class EmployeeController {
     @Param('trainingId') trainingId: string,
     @Body() dto: UpdateTrainingDto,
   ): Promise<TrainingRo> {
-    return this.employeeService.updateTraining(id, trainingId, dto, getOrgFilter(req));
+    return this.employeeService.updateTraining(
+      id,
+      trainingId,
+      dto,
+      getOrgFilter(req),
+    );
   }
 
   @Delete(':id/trainings/:trainingId')
@@ -229,6 +254,127 @@ export class EmployeeController {
       getOrgFilter(req),
     );
   }
+
+  @Post(':id/attachments')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload a file attachment to an employee' })
+  @ApiBody({
+    description: 'File to attach (max 10 MB)',
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        label: { type: 'string', description: 'Optional label' },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({ status: 201, type: AttachmentRo })
+  @ApiResponse({ status: 404, description: 'Employee not found' })
+  async uploadAttachment(
+    @Req() req: Request,
+    @Param() { id }: IdDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: MAX_FILE_SIZE })],
+      }),
+    )
+    file: Express.Multer.File,
+    @Body() dto: UploadAttachmentDto,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<AttachmentRo> {
+    return this.attachmentService.upload(
+      id,
+      file,
+      dto.label ?? null,
+      user?.id ?? null,
+      getOrgFilter(req),
+    );
+  }
+
+  @Post(':id/attachments/bulk')
+  @UseInterceptors(FilesInterceptor('files', 10))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload multiple file attachments (max 10 files)' })
+  @ApiBody({
+    description: 'Files to attach (max 10 MB each)',
+    schema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+      required: ['files'],
+    },
+  })
+  @ApiResponse({ status: 201, type: [AttachmentRo] })
+  async uploadAttachmentsBulk(
+    @Req() req: Request,
+    @Param() { id }: IdDto,
+    @UploadedFiles() files: Express.Multer.File[],
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<AttachmentRo[]> {
+    const results: AttachmentRo[] = [];
+    for (const file of files) {
+      const result = await this.attachmentService.upload(
+        id,
+        file,
+        null,
+        user?.id ?? null,
+        getOrgFilter(req),
+      );
+      results.push(result);
+    }
+    return results;
+  }
+
+  @Get(':id/attachments')
+  @ApiOperation({ summary: 'List all attachments for an employee (with download URLs)' })
+  @ApiResponse({ status: 200, type: [AttachmentWithUrlRo] })
+  async listAttachments(
+    @Req() req: Request,
+    @Param() { id }: IdDto,
+  ): Promise<AttachmentWithUrlRo[]> {
+    return this.attachmentService.listAttachments(id, getOrgFilter(req));
+  }
+
+  @Get(':id/attachments/:attachmentId')
+  @ApiOperation({ summary: 'Get a single attachment with a pre-signed download URL' })
+  @ApiParam({ name: 'attachmentId' })
+  @ApiResponse({ status: 200, type: AttachmentWithUrlRo })
+  @ApiResponse({ status: 404, description: 'Employee or attachment not found' })
+  async getAttachment(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+  ): Promise<AttachmentWithUrlRo> {
+    return this.attachmentService.getDownloadUrl(
+      id,
+      attachmentId,
+      getOrgFilter(req),
+    );
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @ApiOperation({ summary: 'Delete an attachment from employee and S3' })
+  @ApiParam({ name: 'attachmentId' })
+  @ApiResponse({ status: 200, description: 'Attachment deleted' })
+  @ApiResponse({ status: 404, description: 'Employee or attachment not found' })
+  async removeAttachment(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+  ): Promise<void> {
+    return this.attachmentService.removeAttachment(
+      id,
+      attachmentId,
+      getOrgFilter(req),
+    );
+  }
+
 
   @Public()
   @Post('lms/receive')
