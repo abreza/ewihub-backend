@@ -30,6 +30,35 @@ interface SeedOrganization {
 export class OrganizationSeedService {
   private readonly logger = new Logger(OrganizationSeedService.name);
 
+  private getErrorStatus(error: unknown): number | undefined {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'status' in error &&
+      typeof (error as { status: unknown }).status === 'number'
+    ) {
+      return (error as { status: number }).status;
+    }
+    return undefined;
+  }
+
+  private getErrorMessage(error: unknown): string {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      typeof (error as { message: unknown }).message === 'string'
+    ) {
+      return (error as { message: string }).message;
+    }
+
+    if (typeof error === 'string') {
+      return error;
+    }
+
+    return 'Unknown error';
+  }
+
   constructor(
     @InjectModel(Organization.name)
     private readonly orgModel: Model<OrganizationDocument>,
@@ -109,7 +138,10 @@ export class OrganizationSeedService {
 
             userCount++;
           } catch (err) {
-            if (err.status === 409 || /already exists/i.test(err.message)) {
+            const errStatus = this.getErrorStatus(err);
+            const errMessage = this.getErrorMessage(err);
+
+            if (errStatus === 409 || /already exists/i.test(errMessage)) {
               try {
                 const existing = await this.userService.findByEmail(seedUser.email);
                 if (existing) {
@@ -127,19 +159,19 @@ export class OrganizationSeedService {
                   );
                 }
               } catch (assignErr) {
-                const msg = `Failed to assign existing user ${seedUser.email} to org ${entry.abbreviation}: ${assignErr.message}`;
+                const msg = `Failed to assign existing user ${seedUser.email} to org ${entry.abbreviation}: ${this.getErrorMessage(assignErr)}`;
                 this.logger.warn(msg);
                 errors.push(msg);
               }
             } else {
-              const msg = `Failed to create user ${seedUser.email} for org ${entry.abbreviation}: ${err.message}`;
+              const msg = `Failed to create user ${seedUser.email} for org ${entry.abbreviation}: ${errMessage}`;
               this.logger.warn(msg);
               errors.push(msg);
             }
           }
         }
       } catch (err) {
-        const msg = `Failed to seed org "${entry.abbreviation}": ${err.message}`;
+        const msg = `Failed to seed org "${entry.abbreviation}": ${this.getErrorMessage(err)}`;
         this.logger.warn(msg);
         errors.push(msg);
       }
