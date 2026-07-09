@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Transform, Type } from 'class-transformer';
 import { TrainingRo } from './training.ro';
 import { AttachmentRo } from './attachment.ro';
+import { NoteRo } from './note.ro';
 
 export class EmployeeDetailRo {
   @Expose()
@@ -43,6 +44,11 @@ export class EmployeeDetailRo {
   @ApiProperty({ description: 'File attachments', type: [AttachmentRo] })
   @Type(() => AttachmentRo)
   attachments: AttachmentRo[];
+
+  @Expose()
+  @ApiProperty({ description: 'Manager/admin notes (Markdown)', type: [NoteRo] })
+  @Type(() => NoteRo)
+  notes: NoteRo[];
 
   @Expose()
   @ApiProperty({ description: 'Creation timestamp' })

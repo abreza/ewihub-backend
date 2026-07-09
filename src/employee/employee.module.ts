@@ -5,6 +5,7 @@ import { EmployeeService } from './employee.service';
 import { EmployeeReportingService } from './employee-reporting.service';
 import { EmployeeLmsService } from './employee-lms.service';
 import { EmployeeAttachmentService } from './employee-attachment.service';
+import { EmployeeNoteService } from './employee-note.service';
 import { EmployeeController } from './employee.controller';
 import { OrganizationModule } from '../organization/organization.module';
 
@@ -21,6 +22,7 @@ import { OrganizationModule } from '../organization/organization.module';
     EmployeeReportingService,
     EmployeeLmsService,
     EmployeeAttachmentService,
+    EmployeeNoteService,
   ],
   exports: [EmployeeService],
 })

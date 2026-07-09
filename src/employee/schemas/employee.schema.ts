@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { Training, TrainingSchema } from './training.schema';
 import { Attachment, AttachmentSchema } from './attachment.schema';
+import { Note, NoteSchema } from './note.schema';
 
 export type EmployeeDocument = Employee & Document;
 
@@ -33,6 +34,9 @@ export class Employee {
 
   @Prop({ type: [AttachmentSchema], default: [] })
   attachments: Attachment[];
+
+  @Prop({ type: [NoteSchema], default: [] })
+  notes: Note[];
 
   createdAt: Date;
   updatedAt: Date;

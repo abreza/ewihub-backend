@@ -32,12 +32,16 @@ import { EmployeeService } from './employee.service';
 import { EmployeeReportingService } from './employee-reporting.service';
 import { EmployeeLmsService } from './employee-lms.service';
 import { EmployeeAttachmentService } from './employee-attachment.service';
+import { EmployeeNoteService } from './employee-note.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { QueryEmployeesDto } from './dto/query-employees.dto';
 import { AddTrainingDto } from './dto/add-training.dto';
 import { UpdateTrainingDto } from './dto/update-training.dto';
 import { UploadAttachmentDto } from './dto/upload-attachment.dto';
+import { CreateNoteDto } from './dto/create-note.dto';
+import { UpdateNoteDto } from './dto/update-note.dto';
+import { NoteRo } from './dto/note.ro';
 import { EmployeeDetailRo } from './dto/employee-detail.ro';
 import { EmployeeListItemRo } from './dto/employee-list-item.ro';
 import { TrainingRo } from './dto/training.ro';
@@ -72,6 +76,7 @@ export class EmployeeController {
     private readonly reportingService: EmployeeReportingService,
     private readonly lmsService: EmployeeLmsService,
     private readonly attachmentService: EmployeeAttachmentService,
+    private readonly noteService: EmployeeNoteService,
   ) { }
 
   @Post()
@@ -373,6 +378,67 @@ export class EmployeeController {
       attachmentId,
       getOrgFilter(req),
     );
+  }
+
+  @Get(':id/notes')
+  @ApiOperation({ summary: 'List all notes for an employee (newest first)' })
+  @ApiResponse({ status: 200, type: [NoteRo] })
+  @ApiResponse({ status: 404, description: 'Employee not found' })
+  async listNotes(
+    @Req() req: Request,
+    @Param() { id }: IdDto,
+  ): Promise<NoteRo[]> {
+    return this.noteService.listNotes(id, getOrgFilter(req));
+  }
+
+  @Post(':id/notes')
+  @ApiOperation({ summary: 'Add a note to an employee' })
+  @ApiResponse({ status: 201, type: NoteRo })
+  @ApiResponse({ status: 404, description: 'Employee not found' })
+  async addNote(
+    @Req() req: Request,
+    @Param() { id }: IdDto,
+    @Body() dto: CreateNoteDto,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<NoteRo> {
+    return this.noteService.addNote(
+      id,
+      dto.content,
+      { id: user?.id ?? null, name: user?.username ?? null },
+      getOrgFilter(req),
+    );
+  }
+
+  @Patch(':id/notes/:noteId')
+  @ApiOperation({ summary: 'Update a note' })
+  @ApiParam({ name: 'noteId' })
+  @ApiResponse({ status: 200, type: NoteRo })
+  @ApiResponse({ status: 404, description: 'Employee or note not found' })
+  async updateNote(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Param('noteId') noteId: string,
+    @Body() dto: UpdateNoteDto,
+  ): Promise<NoteRo> {
+    return this.noteService.updateNote(
+      id,
+      noteId,
+      dto.content,
+      getOrgFilter(req),
+    );
+  }
+
+  @Delete(':id/notes/:noteId')
+  @ApiOperation({ summary: 'Delete a note from an employee' })
+  @ApiParam({ name: 'noteId' })
+  @ApiResponse({ status: 200, description: 'Note deleted' })
+  @ApiResponse({ status: 404, description: 'Employee or note not found' })
+  async removeNote(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Param('noteId') noteId: string,
+  ): Promise<void> {
+    return this.noteService.removeNote(id, noteId, getOrgFilter(req));
   }
 
 
